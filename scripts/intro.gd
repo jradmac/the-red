@@ -1,8 +1,10 @@
 class_name Intro
 extends CanvasLayer
 ## The opening: a voice in the dark, a little flame, a hero waking on a
-## stone bier, and the Commandments of the Labyrinth. Plays at the start of
-## every run; ESC (or Start on a pad) skips it. The whole game is paused
+## stone bier -- and then Lume's lessons: on a dark screen it shows him,
+## picture by picture, how to survive the labyrinth (intro_lessons.gd), and
+## brings him back to the chamber to set off. Plays at the start of every
+## run; ESC (or Start on a pad) skips it. The whole game is paused
 ## underneath until it ends.
 
 signal finished
@@ -11,6 +13,7 @@ const C_TEXT := Color("e8dfc8")
 const C_DIM := Color("8a8299")
 const C_NAME := Color("ffd35a")
 const C_VOICE := Color("d8d0f0")
+const C_LESSON_BG := Color(0.016, 0.01, 0.03)
 const CHARS_PER_SEC := 38.0
 
 var player: Player
@@ -29,8 +32,16 @@ var _black := 1.0       # full-screen black (1 = all black)
 var _sleeping := true
 var _wake_from := Vector2.ZERO
 var _wake_to := Vector2.ZERO
-var _shown_rules := 0.0
 var _done := false
+# The lesson screen
+var _lesson_bg := 0.0   # the dark lesson screen over the world (0..1)
+var _lesson := ""       # which picture is up (IntroLessons)
+var _topic := ""        # its heading; a new heading opens out of the dark
+var _topic_n := 0       # how many headings so far (the progress pips)
+var _topics_total := 0
+var _delay := 0.0       # dark pause before the picture appears
+var _fade := 0.3        # ...and how long it takes to come up
+var _vt_was := -1.0     # last frame's time into the picture (for its sounds)
 
 
 func setup(p: Player, w: World, c: Companion, h: CanvasLayer) -> void:
@@ -43,6 +54,11 @@ func setup(p: Player, w: World, c: Companion, h: CanvasLayer) -> void:
 	_canvas = Node2D.new()
 	_canvas.draw.connect(_draw_intro)
 	add_child(_canvas)
+	var seen := {}
+	for s in Lore.INTRO:
+		if s[0] == "lesson" and not seen.has(s[3]):
+			seen[s[3]] = true
+	_topics_total = seen.size()
 
 
 func start() -> void:
@@ -64,6 +80,7 @@ func _next() -> void:
 	_step += 1
 	_t = 0.0
 	_shown = 0.0
+	_vt_was = -1000.0
 	companion.talking = false
 	if _step >= Lore.INTRO.size():
 		_finish()
@@ -76,8 +93,20 @@ func _next() -> void:
 		Sfx.play("whisper")
 	elif _kind == "appear":
 		Sfx.play("riddle", -4.0)
-	elif _kind == "commandments":
-		Sfx.play("dusk", -2.0)
+	elif _kind == "lessons_in":
+		Sfx.play("dusk", -4.0)
+	elif _kind == "lesson":
+		_lesson = s[1]
+		_speaker = Lore.COMPANION
+		var topic: String = s[3]
+		if topic != _topic:
+			_delay = 0.7 if _topic != "" else 0.3
+			_fade = 0.5
+			_topic = topic
+			_topic_n += 1
+		else:
+			_delay = 0.0
+			_fade = 0.25
 	if _kind == "wake":
 		Sfx.play("wake")
 		_wake_from = player.position
@@ -95,22 +124,38 @@ func _process(delta: float) -> void:
 		"black":
 			if _t > 1.2:
 				_next()
-		"voice", "say":
-			var total := float(_text.length())
-			var before := int(_shown)
-			_shown = minf(_shown + delta * CHARS_PER_SEC, total)
-			if _kind == "say" and int(_shown) != before and int(_shown) % 3 == 0 and int(_shown) < total \
-					and _text[int(_shown) - 1] != " ":
-				if _speaker == "LUME":
-					Sfx.play("voice" + str(randi() % 4), 0.0, 0.03)
+		"voice", "say", "lesson":
+			var typing := true
+			if _kind == "lesson":
+				var vt := _t - _delay
+				var was := _vt_was
+				_vt_was = vt
+				if was < 0.0 and vt >= 0.0 and _fade >= 0.5:
+					Sfx.play("page", -6.0)   # a new picture opens out of the dark
+				if vt >= 0.0:
+					for cue in IntroLessons.cues(_lesson, was, vt):
+						Sfx.play(cue[1], cue[2])
 				else:
-					Sfx.play("voice" + str(randi() % 4), -5.0, 0.02, 0.6)
-			companion.talking = _kind == "say" and _shown < total
-			if confirm:
-				if _shown < total:
-					_shown = total
-				else:
-					_next()
+					typing = false
+					if confirm:
+						_t = _delay   # don't wait in the dark
+						confirm = false
+			if typing:
+				var total := float(_text.length())
+				var before := int(_shown)
+				_shown = minf(_shown + delta * CHARS_PER_SEC, total)
+				if _kind != "voice" and int(_shown) != before and int(_shown) % 3 == 0 and int(_shown) < total \
+						and _text[int(_shown) - 1] != " ":
+					if _speaker == "LUME":
+						Sfx.play("voice" + str(randi() % 4), 0.0, 0.03)
+					else:
+						Sfx.play("voice" + str(randi() % 4), -5.0, 0.02, 0.6)
+				companion.talking = _kind == "say" and _shown < total
+				if confirm:
+					if _shown < total:
+						_shown = total
+					else:
+						_next()
 		"fade":
 			_black = maxf(1.0 - _t / 2.5, 0.0)
 			if _t > 2.8:
@@ -147,16 +192,17 @@ func _process(delta: float) -> void:
 				_settle_hero()
 				companion.follow = true
 				_next()
-		"commandments":
-			var was := int(_shown_rules)
-			_shown_rules = minf(_shown_rules + delta * 2.2, Lore.COMMANDMENTS.size())
-			if int(_shown_rules) != was and int(_shown_rules) <= Lore.COMMANDMENTS.size():
-				Sfx.play("trap_thud", -12.0, 0.05, 0.7)
-			if confirm:
-				if _shown_rules < Lore.COMMANDMENTS.size():
-					_shown_rules = Lore.COMMANDMENTS.size()
-				else:
-					_next()
+		"lessons_in":
+			# the chamber sinks into the dark
+			_lesson_bg = minf(_t / 0.8, 1.0)
+			if _t > 1.0:
+				_next()
+		"lessons_out":
+			# ...and comes back
+			_lesson_bg = maxf(1.0 - _t / 0.8, 0.0)
+			if _t > 0.9:
+				_lesson_bg = 0.0
+				_next()
 
 
 func _input(event: InputEvent) -> void:
@@ -193,6 +239,9 @@ func _finish() -> void:
 	hud.visible = true
 	get_tree().paused = false
 	finished.emit()
+	# (skipped from the lesson screen: fade out of its dark instead of popping)
+	_black = maxf(_black, _lesson_bg)
+	_lesson_bg = 0.0
 	# fade the black away, then go
 	var tw := create_tween()
 	tw.tween_property(self, "_black", 0.0, 0.5 if _black > 0.0 else 0.01)
@@ -203,6 +252,8 @@ func _finish() -> void:
 
 func _draw_intro() -> void:
 	var screen := _canvas.get_viewport_rect().size
+	if _lesson_bg > 0.0 and not _done:
+		_draw_lesson_screen(screen)
 	if _black > 0.0:
 		_canvas.draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, _black))
 	if _done:
@@ -233,10 +284,33 @@ func _draw_intro() -> void:
 				_more_arrow(Vector2(floorf(screen.x / 2) - 2, y + 4))
 		"say":
 			_draw_box(screen)
-		"commandments":
-			_draw_commandments(screen)
+		"lesson":
+			if _t >= _delay:
+				_draw_box(screen)
 	var hint := "ESC  SKIP INTRO"
 	PixelFont.draw(_canvas, Vector2(screen.x - 8 - PixelFont.width_of(hint), 6), hint, Color(C_DIM, 0.75))
+
+
+## The dark lesson screen: Lume's picture in the middle, its heading and
+## progress at the top (the dialogue box goes underneath, in _draw_box).
+func _draw_lesson_screen(screen: Vector2) -> void:
+	_canvas.draw_rect(Rect2(Vector2.ZERO, screen), Color(C_LESSON_BG, _lesson_bg))
+	if _kind != "lesson":
+		return
+	var stage := Rect2(0, 20, screen.x, screen.y - 84)
+	var vt := _t - _delay
+	if vt >= 0.0:
+		IntroLessons.draw(_canvas, _lesson, vt, stage)
+	var shown := clampf(vt / _fade, 0.0, 1.0) if vt >= 0.0 else 0.0
+	if shown < 1.0:
+		_canvas.draw_rect(Rect2(0, 0, screen.x, stage.end.y), Color(C_LESSON_BG, 1.0 - shown))
+	# heading, with a pip for each topic
+	var cx := floorf(screen.x / 2)
+	PixelFont.draw(_canvas, Vector2(cx - floorf(PixelFont.width_of(_topic) / 2.0), 5), _topic, Color(C_NAME, shown))
+	var w := _topics_total * 6 - 2
+	for i in _topics_total:
+		var col := C_NAME if i < _topic_n else Color("3a3448")
+		_canvas.draw_rect(Rect2(cx - floorf(w / 2.0) + i * 6, 13, 4, 1), Color(col, maxf(shown, 0.4)))
 
 
 func _draw_box(screen: Vector2) -> void:
@@ -267,32 +341,6 @@ func _draw_box(screen: Vector2) -> void:
 		y += 8
 	if _shown >= _text.length():
 		_more_arrow(r.end - Vector2(12, 9))
-
-
-func _draw_commandments(screen: Vector2) -> void:
-	_canvas.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.02, 0.01, 0.04, 0.82))
-	var r := Rect2(20, 14, screen.x - 40, screen.y - 28)
-	# a stone tablet
-	_canvas.draw_rect(r, Color("2a2636"))
-	_canvas.draw_rect(r.grow(-2), Color("4a4458"))
-	_canvas.draw_rect(r.grow(-4), Color("3a3548"))
-	for i in 18:   # weathering
-		var h := (i * 7919) % 997
-		_canvas.draw_rect(Rect2(r.position + Vector2(8 + h % int(r.size.x - 16), 8 + (h / 7) % int(r.size.y - 16)), Vector2(2, 1)), Color("2e2a3c"))
-	var title := "THE COMMANDMENTS OF THE LABYRINTH"
-	PixelFont.draw(_canvas, Vector2(floorf((screen.x - PixelFont.width_of(title)) / 2), r.position.y + 10), title, C_NAME)
-	_canvas.draw_rect(Rect2(r.position.x + 30, r.position.y + 20, r.size.x - 60, 1), Color("8a7a5a"))
-	var n := int(_shown_rules)
-	for i in Lore.COMMANDMENTS.size():
-		if i > n:
-			break
-		var a := 1.0 if i < n else fmod(_shown_rules, 1.0)
-		var y := r.position.y + 28 + i * 17
-		var num: String = Lore.COMMANDMENTS[i][0]
-		PixelFont.draw(_canvas, Vector2(r.position.x + 30 - PixelFont.width_of(num), y), num, Color(C_NAME, a))
-		PixelFont.draw(_canvas, Vector2(r.position.x + 38, y), Lore.COMMANDMENTS[i][1], Color(C_TEXT, a))
-	if n >= Lore.COMMANDMENTS.size():
-		_more_arrow(r.end - Vector2(14, 10))
 
 
 func _more_arrow(a: Vector2) -> void:

@@ -16,7 +16,7 @@ const DOORS_TEX: Texture2D = preload("res://assets/doors.png")
 const MASTER_TEX: Texture2D = preload("res://assets/master.png")
 const INSECTS_TEX: Texture2D = preload("res://assets/insects.png")
 const DEMONS_TEX: Texture2D = preload("res://assets/demons.png")
-const GHOSTS_TEX: Texture2D = preload("res://assets/ghosts.png")
+const LONGMAN_TEX: Texture2D = preload("res://assets/longman.png")
 
 const C_TEXT := Color("e8dfc8")
 const C_DIM := Color("8a8299")
@@ -150,7 +150,7 @@ static func _match_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 			c.draw_rect(Rect2(p.round(), Vector2(1, 1)), Color(1.0, 0.85, 0.4, 1.0 - sk))
 
 
-## Ghosts circle just outside the light. Let it die and they rush in.
+## The Longman waits at the edge of the light. Let it die and it comes.
 static func _ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
 	var lp := Vector2(cx, a.position.y + 74)
@@ -165,18 +165,28 @@ static func _ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void
 	if lt >= 4.6:
 		boost = 26.0 * (1.0 - _k(lt, 4.6, 5.2))
 	_lantern(c, lp, Vector2(cx, a.position.y), fuel, t, 1.0, boost)
-	var base_r := 16.0 + 50.0 * 0.6
-	for i in 4:
-		var ang := i * TAU / 4.0 + t * 0.35 + 0.4
-		var home := base_r + 18.0 + sin(t * 1.7 + i * 1.3) * 3.0
-		var d := home
-		if lt >= 3.7 and lt < 4.6:
-			d = lerpf(home, 16.0, _ease(_k(lt, 3.75 + i * 0.06, 4.35)))
-		elif lt >= 4.6:
-			d = lerpf(16.0, home, _ease(_k(lt, 4.6, 4.95)))
-		var p := lp + Vector2(cos(ang), sin(ang) * 0.75) * d + Vector2(0, sin(t * 3.0 + i) * 2.0)
-		var frame := 4 if (dark and d < 30.0) else 0
-		_ghost(c, p, frame, 2.0, 1.0 if dark else 0.8)
+	# where it stands: just outside the light, on the right, feet on the floor
+	var floor_y := a.position.y + 138.0
+	var edge := cx + 104.0
+	var near := cx + 34.0
+	var x := edge
+	var frame := 0 if fmod(t, 2.4) < 1.6 else 2   # standing, now and then tilting its head
+	var walk := int(t * 7.0) % 4
+	if lt >= 3.75 and lt < 3.9:
+		frame = 8                                   # it drops onto all fours
+	elif lt >= 3.9 and lt < 4.6:
+		x = lerpf(edge, near, _ease(_k(lt, 3.9, 4.55)))
+		frame = 9 + walk                            # and comes
+	elif lt >= 4.6 and lt < 5.5:
+		x = lerpf(near, edge, _ease(_k(lt, 4.62, 5.4)))
+		frame = 9 + walk                            # the light comes back: it backs away
+	# lit only as far as the light reaches it: at the edge, a pale shape in the dark
+	var r := (16.0 + 50.0 * fuel) + boost if fuel > 0.0 else 0.0
+	var seen := clampf(1.0 - (absf(x - cx) - r) / 60.0, 0.0, 1.0)
+	var col := Color(0.46, 0.43, 0.54).lerp(Color(1.0, 0.92, 0.82), seen * 0.8)
+	if dark:
+		col = Color(0.55, 0.52, 0.6)
+	_longman(c, Vector2(x, floor_y), frame, x > cx, col)
 	if lt >= 4.6 and lt < 5.0:
 		var fk := _k(lt, 4.6, 5.0)
 		c.draw_circle(lp, 34.0 * (1.0 - fk) + 8.0, Color(1.0, 0.9, 0.7, 0.45 * (1.0 - fk)))
@@ -265,7 +275,8 @@ static func _map_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	_text_c(c, frame.get_center().x, frame.end.y + 5, "ONLY FLARED ROOMS SHOW UP", C_DIM)
 
 
-## A flare's green light holds the ghosts off too.
+## A flare's green light holds the Longman back too: it creeps up to the
+## edge every few seconds, and recoils.
 static func _flare_ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
 	var ground := Vector2(cx, a.position.y + 94)
@@ -273,19 +284,20 @@ static func _flare_ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -
 	_floor(c, ground, 150.0, 56.0, GREEN, 0.8)
 	_glow(c, ground + Vector2(0, -16), r, GREEN, 0.9)
 	_flare(c, ground, 1.0)
-	var center := ground + Vector2(0, -16)
-	for i in 4:
-		var ang := i * TAU / 4.0 + t * 0.3 + 0.8
-		var d := r + 14.0 + sin(t * 1.6 + i * 1.7) * 3.0
-		if i == 0:
-			# one gets brave every few seconds, touches the light and recoils
-			var dk := fmod(lt, 3.0)
-			if dk > 1.6 and dk < 2.4:
-				var k := _k(dk, 1.6, 2.4)
-				d -= sin(k * PI) * 18.0 * (1.0 if k < 0.5 else 0.6)
-		var p := center + Vector2(cos(ang), sin(ang) * 0.6) * d + Vector2(0, sin(t * 3.0 + i) * 2.0)
-		_ghost(c, p, 0, 2.0, 0.8)
-	_text_c(c, cx, a.end.y - 6, "FLARES KEEP THE GHOSTS AWAY", C_DIM)
+	var floor_y := a.position.y + 138.0
+	var edge := cx - 112.0
+	var x := edge
+	var frame := 0 if fmod(t, 2.4) < 1.6 else 2
+	var dk := fmod(lt, 3.0)
+	if dk > 1.4 and dk < 2.6:
+		# it gets brave, creeps toward the light, and recoils
+		var k := _k(dk, 1.4, 2.6)
+		x = edge + sin(k * PI) * 34.0
+		frame = 4 + int(t * 7.0) % 4
+	var seen := clampf(1.0 - (absf(x - cx) - r) / 50.0, 0.0, 1.0)
+	var col := Color(0.3, 0.34, 0.36).lerp(Color(0.75, 1.0, 0.82), seen * 0.7)
+	_longman(c, Vector2(x, floor_y), frame, false, col)
+	_text_c(c, cx, a.end.y - 6, "FLARES HOLD THE LONGMAN BACK", C_DIM)
 
 
 # --- 3. Gates and keys --------------------------------------------------------
@@ -573,8 +585,14 @@ static func _icon(c: CanvasItem, id: String, center: Vector2, s: float, alpha :=
 	_tex(c, ITEMS_TEX, Rect2(int(Items.DATA[id].icon) * 16, 0, 16, 16), center, s, Color(1, 1, 1, alpha))
 
 
-static func _ghost(c: CanvasItem, center: Vector2, frame: int, s: float, alpha: float) -> void:
-	_tex(c, GHOSTS_TEX, Rect2(frame * 16, 0, 16, 16), center, s, Color(1, 1, 1, alpha))
+## The Longman (longman.png, 80 x 80 frames), standing on `feet`; `flip`
+## turns it to face left.
+static func _longman(c: CanvasItem, feet: Vector2, frame: int, flip: bool, col: Color) -> void:
+	var src := Rect2(frame * 80, 0, 80, 80)
+	var dst := Rect2((feet - Vector2(40, 80)).round(), Vector2(80, 80))
+	if flip:
+		dst.size.x = -80.0   # (drawn mirrored in the same place)
+	c.draw_texture_rect_region(LONGMAN_TEX, dst, src, col)
 
 
 static func _flare(c: CanvasItem, ground: Vector2, alpha: float) -> void:
