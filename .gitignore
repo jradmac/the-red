@@ -1,0 +1,10 @@
+.godot/
+*.import
+export/
+tools/__pycache__/
+# backups and transfer files (not part of the game)
+_old_extract_safe_to_delete/
+_xfer/
+_before_*/
+*.tgz
+.DS_Store
