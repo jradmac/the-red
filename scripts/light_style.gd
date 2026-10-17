@@ -18,7 +18,7 @@ shader_type spatial;
 render_mode {modes};
 #include "res://shaders/light3d.gdshaderinc"
 
-uniform sampler2D albedo_tex : source_color, filter_nearest, {repeat};
+uniform sampler2D albedo_tex : source_color, filter_linear, {repeat};
 uniform bool has_tex = false;
 uniform vec4 albedo_color : source_color = vec4(1.0);
 uniform bool use_vcol = false;
@@ -27,10 +27,25 @@ uniform float emission_energy = 0.0;
 uniform bool emission_from_tex = false;
 uniform float alpha_cut = 0.5;
 
+// Pixel art on a 3D surface without the shimmer: each texel stays a crisp
+// square, but where its edge falls between two screen pixels the two are
+// blended for that one pixel. With plain nearest sampling the perspective
+// doubles some rows of texels and drops others, and which ones flips as
+// you walk -- brick and cobble patterns crawl.
+vec2 sharp_uv(vec2 uv, vec2 size) {
+	vec2 p = uv * size;
+	vec2 seam = floor(p + 0.5);
+	vec2 w = max(fwidth(p), vec2(1e-4));
+	p = seam + clamp((p - seam) / w, -0.5, 0.5);
+	return p / size;
+}
+
 void fragment() {
 	vec4 c = albedo_color;
+	vec2 uv = UV;
 	if (has_tex) {
-		c *= texture(albedo_tex, UV);
+		uv = sharp_uv(UV, vec2(textureSize(albedo_tex, 0)));
+		c *= texture(albedo_tex, uv);
 	}
 	if (use_vcol) {
 		c *= COLOR;
@@ -39,7 +54,7 @@ void fragment() {
 	{alpha}
 	vec3 em = emission_color * emission_energy;
 	if (emission_from_tex && has_tex) {
-		em *= texture(albedo_tex, UV).rgb;
+		em *= texture(albedo_tex, uv).rgb;
 	}
 	EMISSION = em;
 	ROUGHNESS = 1.0;

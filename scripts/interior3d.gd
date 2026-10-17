@@ -102,12 +102,12 @@ func setup(owner_interior: Interior) -> void:
 	_sun.rotation = Vector3(deg_to_rad(-62.0), deg_to_rad(-18.0), 0.0)
 	_sun.shadow_enabled = true
 	_sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	_sun.directional_shadow_max_distance = 30.0
+	_sun.directional_shadow_max_distance = View3D.DIST + 20.0
 	_sun.shadow_bias = 0.05
 	_root.add_child(_sun)
 	_cam = Camera3D.new()
 	_cam.near = 1.0
-	_cam.far = 80.0
+	_cam.far = View3D.DIST + 60.0
 	vp.add_child(_cam)
 	_cam.current = true
 	_grade = ShaderMaterial.new()

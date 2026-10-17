@@ -18,7 +18,7 @@ extends Node
 ## World units are tiles: x east, y up, z south.
 
 const PITCH := deg_to_rad(52.0)     ## how steeply the camera looks down
-const DIST := 22.0                  ## camera distance (tiles) from the spot it looks at
+const DIST := 44.0                  ## camera distance (tiles) from the spot it looks at
 const LIGHT_POOL := 16              ## lamps, candles, wisps... at once (nearest first)
 const LANTERN_Y := 1.3              ## how high a lantern is held (walls are ~1.05)
 const SHADOW_LIGHTS := 4            ## ...the nearest this many cast shadows (walls block them)
@@ -109,8 +109,10 @@ func setup(m: Node) -> void:
 	sun.rotation = Vector3(deg_to_rad(-55.0), deg_to_rad(-35.0), 0.0)
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	sun.directional_shadow_max_distance = 40.0
+	sun.directional_shadow_max_distance = DIST + 26.0
 	sun.shadow_bias = 0.06
+	sun.shadow_normal_bias = 1.5
+	sun.shadow_blur = 1.5
 	root.add_child(sun)
 	for i in LIGHT_POOL:
 		var l := OmniLight3D.new()
@@ -157,7 +159,7 @@ func _add_view() -> Dictionary:
 	var c := Camera3D.new()
 	c.fov = rad_to_deg(2.0 * atan(7.5 / DIST))
 	c.near = 1.0
-	c.far = 90.0
+	c.far = 160.0
 	v.add_child(c)
 	c.current = true
 	var d := {"vp": v, "cam": c, "target": Vector3.ZERO, "display": null, "show": null}
@@ -415,12 +417,17 @@ static func flame(hue: Color, k: float) -> Color:
 
 func _update_lights(ts: Array[Vector3]) -> void:
 	var day: DayCycle = main.day
-	var dl := day.light if day != null else 0.0
+	var raw := day.light if day != null else 0.0
 	var warm := day.warmth() if day != null else 0.0
-	# the sun (and moon): daylight, warm at dawn and dusk; a faint cold moon at night
+	# sunrise and sunset ease in and out (no sudden start or stop), and every
+	# part of the light follows the same curve
+	var dl := smoothstep(0.0, 1.0, raw)
+	# the sun (and moon): daylight, a golden glow at dawn and dusk; a faint
+	# cold moon at night. It always casts its shadows (they fade with it
+	# instead of switching on all at once)
 	sun.light_energy = lerpf(0.08, 0.95, dl)
-	sun.light_color = Color(0.55, 0.6, 0.95).lerp(Color(1.0, 0.95, 0.85), dl).lerp(Color(1.0, 0.7, 0.45), warm * 0.8)
-	sun.shadow_enabled = dl > 0.05
+	sun.light_color = Color(0.55, 0.6, 0.95).lerp(Color(1.0, 0.95, 0.85), dl).lerp(Color(1.0, 0.8, 0.52), warm * 0.55)
+	sun.shadow_enabled = true
 	# the dark isn't black: a deep, cold indigo that the warm lights cut into
 	env.ambient_light_color = Color(0.17, 0.14, 0.34).lerp(Color(0.62, 0.64, 0.76), dl)
 	env.ambient_light_energy = lerpf(0.24, 0.55, dl)
@@ -532,11 +539,19 @@ func _place_light(l: OmniLight3D, s: Dictionary, k: float, reach := 1.45) -> voi
 const DECAL_SHADER := """
 shader_type spatial;
 render_mode blend_mix, depth_draw_never, cull_back, diffuse_toon, specular_disabled;
-uniform sampler2D dec0 : source_color, filter_nearest;
-uniform sampler2D dec1 : source_color, filter_nearest;
+uniform sampler2D dec0 : source_color, filter_linear;
+uniform sampler2D dec1 : source_color, filter_linear;
 uniform vec4 r0;   // x, z of its corner, then its size (tiles)
 uniform vec4 r1;
 varying vec3 wp;
+// crisp texels without the crawl (see light_style.gd)
+vec2 sharp_uv(vec2 uv, vec2 size) {
+	vec2 p = uv * size;
+	vec2 seam = floor(p + 0.5);
+	vec2 w = max(fwidth(p), vec2(1e-4));
+	p = seam + clamp((p - seam) / w, -0.5, 0.5);
+	return p / size;
+}
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	VERTEX += NORMAL * 0.012;
@@ -546,9 +561,9 @@ void fragment() {
 	vec2 u1 = (wp.xz - r1.xy) / r1.zw;
 	vec4 c = vec4(0.0);
 	if (u0.x >= 0.0 && u0.y >= 0.0 && u0.x < 1.0 && u0.y < 1.0) {
-		c = texture(dec0, u0);
+		c = texture(dec0, sharp_uv(u0, vec2(textureSize(dec0, 0))));
 	} else if (u1.x >= 0.0 && u1.y >= 0.0 && u1.x < 1.0 && u1.y < 1.0) {
-		c = texture(dec1, u1);
+		c = texture(dec1, sharp_uv(u1, vec2(textureSize(dec1, 0))));
 	}
 	ALBEDO = c.rgb;
 	ALPHA = c.a;

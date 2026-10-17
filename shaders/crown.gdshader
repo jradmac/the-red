@@ -6,7 +6,16 @@ shader_type spatial;
 render_mode specular_disabled, cull_back, shadows_disabled;
 #include "res://shaders/light3d.gdshaderinc"
 
-uniform sampler2D leaves : source_color, filter_nearest, repeat_enable;
+uniform sampler2D leaves : source_color, filter_linear, repeat_enable;
+
+// crisp texels without the crawl (see light_style.gd)
+vec2 sharp_uv(vec2 uv, vec2 size) {
+	vec2 p = uv * size;
+	vec2 seam = floor(p + 0.5);
+	vec2 w = max(fwidth(p), vec2(1e-4));
+	p = seam + clamp((p - seam) / w, -0.5, 0.5);
+	return p / size;
+}
 uniform float uv_scale = 1.0;
 varying vec3 lp;
 varying vec3 ln;
@@ -21,7 +30,7 @@ void fragment() {
 	vec3 an = abs(ln);
 	vec2 uv = an.y > 0.75 ? lp.xz : (an.x > an.z ? lp.zy : lp.xy);
 	uv.y = -uv.y;
-	vec3 t = texture(leaves, uv * uv_scale).rgb;
+	vec3 t = texture(leaves, sharp_uv(uv * uv_scale, vec2(textureSize(leaves, 0)))).rgb;
 	// shade under each clump (the foliage above it keeps the sky off)
 	float under = mix(0.62, 1.0, smoothstep(-0.6, 0.35, ln.y));
 	float facing = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
