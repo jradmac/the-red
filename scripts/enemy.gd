@@ -7,6 +7,11 @@ extends Node2D
 const INSECTS_TEX: Texture2D = preload("res://assets/insects.png")
 const DEMONS_TEX: Texture2D = preload("res://assets/demons.png")
 const GHOSTS_TEX: Texture2D = preload("res://assets/ghosts.png")
+## The insects as they walk (tools/make_overworld_creatures.py): three-quarter
+## view, 24 px, facing where they go -- rows: down 0-3, side 4-7, up 8-11.
+const INSECTS_WALK_TEX: Texture2D = preload("res://assets/insects_walk.png")
+const WALK_ART := [0, 1, 4, 5]     ## insects drawn for it so far (the rest use insects.png)
+const FLIERS := [4, 5]             ## these fly: they flap, and hover over their shadow
 
 var kind := ""          # "insect", "demon", "ghost"
 var variant := 0        # column in its sprite sheet
@@ -26,6 +31,7 @@ var calm := 0.0         ## > 0: it gave up on you and won't chase again for a wh
 var lit := false        # standing in light right now (set by Enemies)
 var cornered := 0.0     # how long it's been trapped in light with nowhere to flee
 var facing_left := false
+var facing := 0         # 0 toward you, 1 away, 2 to the side (facing_left says which)
 var lunging := false
 var in_battle := false   ## someone is fighting it: it holds still and can't be bumped into
 var fade := 1.0         # ghosts: 0 = not there, 1 = fully formed
@@ -62,6 +68,7 @@ func display_name() -> String:
 func step_to(target: Vector2i, duration: float) -> void:
 	if target.x != cell.x:
 		facing_left = target.x < cell.x
+	facing = 2 if target.x != cell.x else (0 if target.y > cell.y else 1)
 	cell = target
 	_steps += 1
 	_from = position
@@ -111,6 +118,16 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
+## The frame of the walk sheet (insects_walk.png): legs step through a full
+## gait every two steps; fliers beat their wings all the time.
+func walk_frame() -> int:
+	if FLIERS.has(variant):
+		return int(_time * 11.0 + variant) % 4
+	if moving or lunging:
+		return (int(clampf(_t, 0.0, 0.999) * 2.0) + (_steps % 2) * 2) % 4
+	return 0
+
+
 ## Which animation frame (row of its sheet) to show right now.
 func anim_frame() -> int:
 	if kind == "ghost":
@@ -140,10 +157,18 @@ func paint(ci: CanvasItem, at: Vector2) -> void:
 	var dst: Rect2
 	match kind:
 		"insect":
-			tex = INSECTS_TEX
-			bob = -1.0 if moving and _t < 0.5 else 0.0
-			src = Rect2(variant * 16, anim_frame() * 16, 16, 16)
-			dst = Rect2(Vector2(0, bob), Vector2(16, 16))
+			if WALK_ART.has(variant):
+				tex = INSECTS_WALK_TEX
+				var fr := walk_frame()
+				if FLIERS.has(variant):
+					bob = -5.0 + roundf(sin(_time * 3.1 + variant) * 1.5)   # hovering
+				src = Rect2(variant * 24, ([0, 8, 4][facing] + fr) * 24, 24, 24)   # (rows: down, side, up)
+				dst = Rect2(Vector2(-4, -7 + bob), Vector2(24, 24))
+			else:
+				tex = INSECTS_TEX
+				bob = -1.0 if moving and _t < 0.5 else 0.0
+				src = Rect2(variant * 16, anim_frame() * 16, 16, 16)
+				dst = Rect2(Vector2(0, bob), Vector2(16, 16))
 		"demon":
 			tex = DEMONS_TEX
 			bob = roundf(sin(_time * 3.0))
@@ -178,7 +203,10 @@ func paint(ci: CanvasItem, at: Vector2) -> void:
 					var ghost_dst := Rect2(at + dst.position + back * 4.0 * k, dst.size)
 					ci.draw_texture_rect_region(tex, ghost_dst, src, Color(0.7, 0.8, 1.0, 0.18 * fade / k))
 		mod.a *= fade
-	if facing_left:   # mirror through a flipped transform
+	var mirror := facing_left
+	if kind == "insect" and WALK_ART.has(variant):
+		mirror = facing_left and facing == 2   # (only the side view turns round)
+	if mirror:   # mirror through a flipped transform
 		ci.draw_set_transform(at + Vector2(16, 0), 0.0, Vector2(-1, 1))
 		ci.draw_texture_rect_region(tex, dst, src, mod)
 	else:
