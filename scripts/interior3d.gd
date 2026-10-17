@@ -428,7 +428,6 @@ func _place_people() -> void:
 	while _sprites.size() < who.size():
 		_add_sprite()
 	_jobs.clear()
-	var toward := Vector3(0.0, sin(View3D.PITCH), cos(View3D.PITCH))
 	for i in _sprites.size():
 		var s := _sprites[i]
 		var sh := _shadows[i]
@@ -441,7 +440,7 @@ func _place_people() -> void:
 		var foot := Vector3(pos.x / 16.0 + 0.5, 0.0, pos.y / 16.0 + 0.5)
 		_jobs.append([i, w[0]])
 		s.region_rect = Rect2(i * SLOT.x, 0, SLOT.x, SLOT.y)
-		var at := foot + toward * LIFT
+		var at := foot   # (hidden by the room like an upright figure: sprite3d_depth.gdshader)
 		var depth := (at - _cam.global_position).dot(-_cam.global_transform.basis.z)
 		var sp := _cam.unproject_position(at).round()
 		s.position = _cam.project_position(sp, depth)
@@ -467,6 +466,10 @@ func _add_sprite() -> void:
 	s.double_sided = true
 	s.offset = Vector2(0, SLOT.y / 2.0 - (SLOT.y - PIVOT.y))
 	s.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var dm := ShaderMaterial.new()
+	dm.shader = SpriteHost.DEPTH_SHADER
+	dm.set_shader_parameter("atlas", _atlas.get_texture())
+	s.material_override = dm
 	_root.add_child(s)
 	_sprites.append(s)
 	var sh := MeshInstance3D.new()
