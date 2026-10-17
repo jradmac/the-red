@@ -338,3 +338,175 @@ def weeper(s, facing, f, o):
 DESIGNS = {"grinner": grinner, "many_eyes": many_eyes, "wraith": wraith, "hollow": hollow, "maw": maw,
            "weeper": weeper, "bride": weeper}
 HOVERERS = {"wraith"}
+
+
+# --- Added with the rarity system ----------------------------------------------------------
+
+def marionette(s, facing, f, o):
+    """Jerked along on its strings: a leg kicks up, an arm swings up, the head lolls."""
+    cut = o.get("cut", False)
+    jerk = [(0, 0), (-2, 1), (0, 0), (1, -2)][f]     # (left, right) lift of hands/knees
+    b = [0, -1, 0, -1][f]
+    side = facing == "side"
+    back = facing == "up"
+    xs = (10.5, 13.5) if not side else (11, 13)
+    # legs: wooden, ball-jointed, swinging stiffly from the hip
+    for i, x in enumerate(xs):
+        kick = jerk[i] if not side else (2 if (f == 1 and i == 0) or (f == 3 and i == 1) else 0)
+        fx = x + (kick * 0.7 if side else 0)
+        s.limb([(x, 20 + b), (x + (kick * 0.3 if side else 0), 25 + b - abs(kick) * 0.6), (fx, GROUND - 1 - abs(kick))],
+               0.7, "wood", r_end=0.6)
+    # the harlequin coat
+    s.poly([(9, 12 + b), (15, 12 + b), (17, 20 + b), (7, 20 + b)], "cloak", grad=(3, 1))
+    for k in range(3):
+        for j in range(2):
+            x, y = 9.5 + k * 2.5 + j, 14 + j * 3 + b
+            s.dot(x, y, "cloak", 0 if (k + j) % 2 else 4)
+    s.poly([(10, 11.5 + b), (14, 11.5 + b), (13, 13 + b), (11, 13 + b)], "gum", grad=(3, 1))
+    # arms
+    for i, sgn in enumerate((-1, 1)):
+        if side and sgn < 0:
+            continue
+        lift = jerk[i]
+        sx = 12 + sgn * 3.5 if not side else 13
+        s.limb([(sx, 13 + b), (sx + sgn * 1.5 + (1 if side else 0), 16.5 + b + lift), (sx + sgn * 1.2 + (2 if side else 0), 19.5 + b + lift * 1.5)],
+               0.65, "wood", r_end=0.6)
+    # the porcelain head, lolling
+    hx = 12 + [0, -0.5, 0, 0.5][f] + (1 if side else 0)
+    s.blob(hx, 8 + b, 3.2, 3.6, "skin", bands=(-0.25, 0.15, 0.6, 0.9, 0.98))
+    s.blob(hx - (0.5 if side else 0), 5.5 + b, 3.3, 1.7, "wood", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+    if back:
+        s.blob(hx, 8 + b, 3.0, 3.0, "wood", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+    elif side:
+        s.dot(hx + 1.5, 7.5 + b, "mouth", 0)
+        s.dot(hx + 1.5, 7.5 + b, "ff3b4d")
+        s.dot(hx + 2, 9.5 + b, "gum", 2)
+        s.line([(hx + 1, 10 + b), (hx + 1, 11 + b)], "skin", 0)
+    else:
+        for d in (-1, 1):
+            s.dot(hx + d * 1.3, 7.5 + b, "ff3b4d")
+            s.dot(hx + d * 2, 9.5 + b, "gum", 2)
+            s.line([(hx + d * 1, 10 + b), (hx + d * 1, 11.5 + b)], "skin", 0)
+        s.line([(hx - 0.8, 10 + b), (hx + 0.8, 10 + b)], "mouth", 0)
+    # the strings
+    anchors = [(hx, 4 + b)]
+    if not side:
+        anchors += [(12 - 4.7, 19.5 + b + jerk[0] * 1.5), (12 + 4.7, 19.5 + b + jerk[1] * 1.5)]
+    else:
+        anchors += [(15.2, 19.5 + b + jerk[1] * 1.5)]
+    for i, (x, y) in enumerate(anchors):
+        if cut:
+            sw = [0, 1, 0, -1][(f + i) % 4]
+            s.line([(x, y), (x + sw * 0.5, y - 2), (x + sw, y - 3.5)], "string", 3, only_on=False)
+        else:
+            s.line([(x, y), (x + (x - 12) * 0.2, 0)], "string", 4, only_on=False)
+
+
+def witch(s, facing, f, o):
+    """Hobbles: bent over her staff, which plants with every other step."""
+    candles = o.get("candles", False)
+    b = [0, -1, 0, 0][f]
+    hob = [0, 1, 0, -1][f]
+    side = facing == "side"
+    back = facing == "up"
+    # skirts, dragging
+    hem = _hem(5, 18, 29, f, rag=1.0)
+    s.poly([(9, 13 + b), (16, 13 + b), (19, 25)] + hem[::-1] + [(5, 25)], "cloak", grad=(2, 0))
+    for xf in (8, 12, 16):
+        s.line([(xf, 16 + b), (xf + (xf - 12) * 0.3, 28)], "cloak", 0)
+    # the staff, planted beside her
+    sx = 18 + (hob * 0.5 if not side else 2 + hob)
+    if not back:
+        s.limb([(sx, GROUND), (sx - 0.3, 14), (sx, 6 + b)], 0.55, "wood", r_end=0.5)
+        if not candles:
+            s.dot(sx + 1.5, 7.5 + b, "glow", 4)
+            s.dot(sx + 1.5, 8.5 + b, "glow", 3)
+            s.dot(sx + 2.5, 8 + b, "glow", 2)
+    # the hunched back and shawl
+    s.blob(12 - (2 if side else 0), 14 + b, 6, 4, "cloak", bands=(-0.3, 0.1, 0.65, 0.92))
+    # the head, thrust forward under the hood
+    hx = 12 + (2.5 if side else 0) + hob * 0.3
+    hy = 10 + b
+    s.blob(hx, hy - 1, 4, 3.8, "cloak", bands=(-0.3, 0.1, 0.65, 0.92))
+    if back:
+        if candles:
+            pass
+        else:
+            s.limb([(sx, GROUND), (sx - 0.3, 14), (sx, 6 + b)], 0.55, "wood", r_end=0.5)
+    elif side:
+        s.blob(hx + 1.5, hy + 0.5, 2.2, 2.5, "skin", bands=(-0.4, 0.0, 0.45, 0.8, 0.95))
+        s.limb([(hx + 3, hy), (hx + 4.5, hy + 2)], 0.6, "skin", r_end=0.4)     # the nose
+        s.dot(hx + 2, hy - 0.5, "ffb040" if candles else "a8f070")
+        s.limb([(hx + 1, hy + 4), (sx, 13 + b)], 0.6, "skin", r_end=0.5)        # hand on the staff
+    else:
+        s.blob(hx, hy + 0.5, 2.6, 2.6, "skin", bands=(-0.4, 0.0, 0.45, 0.8, 0.95))
+        s.limb([(hx, hy), (hx + 0.5, hy + 2.5)], 0.6, "skin", r_end=0.4)
+        for d in (-1, 1):
+            s.dot(hx + d * 1.2, hy - 0.3, "ffb040" if candles else "a8f070")
+        s.dot(hx - 2.5, hy + 2, "hair", 3)
+        s.dot(hx + 2.5, hy + 2.5, "hair", 3)
+        s.limb([(15, 15 + b), (sx, 13 + b)], 0.6, "skin", r_end=0.5)
+    if candles:
+        for k, dx in enumerate((-1.8, 0, 1.8)):
+            x0 = hx + dx
+            h = (3, 4, 2.5)[k]
+            s.line([(x0, hy - 4), (x0, hy - 4 - h)], "wax", 4, only_on=False)
+            s.dot(x0, hy - 5 - h + ([0, -1, 0, 0][(f + k) % 4]), "glow", 4)
+
+
+def grandmother(s, facing, f, o):
+    """Walks upright in her nightgown, paws out in front of her."""
+    wolf = o.get("wolf", False)
+    b = STEP[f]
+    side = facing == "side"
+    back = facing == "up"
+    _feet(s, f, (10, 14) if not side else (11, 13), "fur", r=1.1, side=side)
+    hem = _hem(5, 19, 28 + b * 0.5, f, rag=0.8)
+    s.poly([(9, 13 + b), (15, 13 + b), (18.5, 24 + b)] + hem[::-1] + [(5.5, 24 + b)], "cloak", grad=(3, 1))
+    for k in range(5):   # little flowers
+        s.dot(7.5 + (k * 3.1) % 10, 17 + (k * 2) % 9 + b, "gum", 3)
+    for x in range(6, 19, 2):   # the frill
+        s.dot(x, 28 + b * 0.5 + (x % 4 == 0), "veil", 4)
+    if wolf and not back:
+        s.poly([(11, 19 + b), (13, 19 + b), (13.5, 27 + b), (10.5, 27 + b)], "fur", grad=(2, 1))
+    # the shawl
+    s.blob(12 - (1 if side else 0), 13.5 + b, 4.5, 2.2, "veil", bands=(-0.25, 0.15, 0.6, 0.9))
+    # paws
+    for d in ((1,) if side else (-1, 1)):
+        a = [0, 1, 0, -1][f] * d
+        x0 = 12 + d * 3.5 if not side else 14
+        s.limb([(x0, 14 + b), (x0 + d * 1 + (2 if side else 0), 18 + b + a)], 0.9, "cloak", r_end=0.8)
+        s.blob(x0 + d * 1 + (2.5 if side else 0), 19 + b + a, 1.2, 1.1, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+    # the wolf's head under the bonnet
+    hx = 12 + (1.5 if side else 0)
+    hy = 8 + b
+    for d in (-1, 1):   # ears
+        s.poly([(hx + d * 1.5, hy - 2.5), (hx + d * 3.5, hy - 3), (hx + d * 3, hy - 6.5 - (1 if wolf else 0))], "fur",
+               grad=(3, 1))
+    s.blob(hx, hy, 3.4, 3.2, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+    if not wolf:
+        s.blob(hx - (0.5 if side else 0), hy - 3, 4.2, 2.0, "veil", bands=(-0.25, 0.15, 0.6, 0.9, 0.98))
+        for k in range(5):
+            s.dot(hx - 4 + k * 2, hy - 1.5 + (k % 2) * 0.5, "veil", 4)
+    if back:
+        return
+    if side:
+        s.blob(hx + 3, hy + 1.5, 2.2, 1.4, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))   # the muzzle
+        s.dot(hx + 5, hy + 1, "mouth", 0)
+        s.line([(hx + 2, hy + 2.5), (hx + 4.5, hy + 2.5)], "mouth", 0)
+        s.dot(hx + 3.5, hy + 2.8, "teeth", 4)
+        s.dot(hx + 1.5, hy - 0.5, "ff3b4d" if wolf else "ffcf3f")
+        s.dot(hx + 1, hy - 0.5, "gold", 2) if not wolf else None
+    else:
+        s.blob(hx, hy + 2, 2, 1.6, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        s.dot(hx, hy + 1.2, "mouth", 0)
+        s.line([(hx - 1.5, hy + 3), (hx + 1.5, hy + 3)], "mouth", 0)
+        s.dot(hx - 1, hy + 3.3, "teeth", 4)
+        s.dot(hx + 1, hy + 3.3, "teeth", 4)
+        for d in (-1, 1):
+            s.dot(hx + d * 1.4, hy - 0.5, "ff3b4d" if wolf else "ffcf3f")
+            if not wolf:
+                s.dot(hx + d * 2.3, hy - 0.5, "gold", 3)
+
+
+DESIGNS.update({"marionette": marionette, "witch": witch, "grandmother": grandmother})

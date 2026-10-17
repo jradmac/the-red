@@ -517,3 +517,170 @@ def mantis(s, facing, f):
 DESIGNS = {"beetle": beetle, "moth": moth, "spider": spider, "centipede": centipede, "tick": tick,
            "scarab": scarab, "wasp": wasp, "mantis": mantis}
 FLIERS = {"moth", "wasp"}
+
+
+# --- Added with the rarity system ----------------------------------------------------------
+
+# Firefly (flies): a little beetle hanging from a glowing lantern of a tail
+
+def firefly(s, facing, f):
+    up = f % 2 == 0
+    hover = [0, 1, 0, 1][f]
+    glow = [0, 0.3, 0.6, 0.3][f]
+    if facing in ("down", "up"):
+        back = facing == "up"
+        ty, hy, gy = (11, 15, 6) if not back else (9, 5, 14)
+
+        def lantern():
+            for k in range(6):   # a haze of light around it
+                a = k * 1.05 + f * 0.5
+                s.dot(12 + math.cos(a) * 6, gy + hover + math.sin(a) * 5, "glow", 3 + (k + f) % 2)
+            s.blob(12, gy + hover, 4 + glow, 4 + glow, "glow", bands=(-0.2, 0.25, 0.6, 0.85, 0.97))
+            s.blob(11, gy - 1 + hover, 1.5, 1.3, "glow", bands=(-9, -9, -9, -9), outline=False)
+        if not back:
+            lantern()
+        for side in (-1, 1):   # wings
+            if up:
+                pts = [(12 + side * 2, ty - 1), (12 + side * 9, ty - 5), (12 + side * 9.5, ty - 2.5), (12 + side * 3, ty + 1)]
+            else:
+                pts = [(12 + side * 2, ty), (12 + side * 9.5, ty + 1.5), (12 + side * 8.5, ty + 3.5), (12 + side * 3, ty + 2)]
+            s.poly([(x, y + hover) for x, y in pts], "wing", grad=(4, 2))
+        s.blob(12, ty + hover, 3, 2.6, "shell", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        for side in (-1, 1):
+            s.limb([(12 + side * 1.5, ty + 1.5 + hover), (12 + side * 3, ty + 4.5 + hover)], 0.45, "leg", r_end=0.35)
+        s.blob(12, hy + hover, 2.6, 1.9, "plate", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        if back:
+            lantern()
+        else:
+            s.dot(11, hy + hover, "ffcf3f")
+            s.dot(13, hy + hover, "ffcf3f")
+        tw = [0, 1, 0, -1][f]
+        s.limb([(11, hy - 1.5 + hover), (9, hy - 4 + hover), (8 + tw * 0.4, hy - 5 + hover)], 0.4, "leg", r_end=0.3)
+        s.limb([(13, hy - 1.5 + hover), (15, hy - 4 + hover), (16 - tw * 0.4, hy - 5 + hover)], 0.4, "leg", r_end=0.3)
+    else:
+        def wingp(dx):
+            if up:
+                return [(13 + dx, 9), (8 + dx, 3), (11 + dx, 2), (16 + dx, 8)]
+            return [(13 + dx, 10), (6 + dx, 9), (7 + dx, 11.5), (14 + dx, 11)]
+        s.poly([(x, y + hover) for x, y in wingp(-1)], "wing", grad=(2, 1))
+        for k in range(6):
+            a = k * 1.05 + f * 0.5
+            s.dot(7 + math.cos(a) * 6, 13 + hover + math.sin(a) * 4.5, "glow", 3 + (k + f) % 2)
+        s.blob(7, 13 + hover, 4.2 + glow, 3.6 + glow, "glow", bands=(-0.2, 0.25, 0.6, 0.85, 0.97))
+        s.blob(6, 12 + hover, 1.5, 1.2, "glow", bands=(-9, -9, -9, -9), outline=False)
+        s.blob(13.5, 11 + hover, 3, 2.3, "shell", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        s.blob(17.5, 11.5 + hover, 2.2, 1.9, "plate", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        s.dot(18.5, 11 + hover, "ffcf3f")
+        tw = [0, 1, 0, -1][f]
+        s.limb([(18, 9.5 + hover), (20, 7 + hover), (21.5, 6.5 + hover + tw * 0.4)], 0.4, "leg", r_end=0.3)
+        for k in range(3):
+            s.limb([(12.5 + k, 13 + hover), (12 + k * 1.5, 16 + hover + (k % 2))], 0.45, "leg", r_end=0.35)
+        s.poly([(x, y + hover) for x, y in wingp(0.5)], "wing", grad=(4, 2))
+
+
+# Scorpion: low on eight legs, pincers out front, the tail arched over its back
+
+def scorpion(s, facing, f):
+    b = BOB[f] * 0.5
+    sway = [0, 0.5, 0, -0.5][f]
+    if facing in ("down", "up"):
+        back = facing == "up"
+        d = 1 if not back else -1     # +1: the head is toward the bottom of the picture
+
+        def tail():
+            pts = []
+            for i in range(6):
+                t = i / 5
+                # from the rear of the body, up, and curling over toward the head
+                y = 12 - d * 4.5 - t * 9 + (t ** 2) * 6 * (1 if not back else 0.4)
+                pts.append((12 + sway * t * 2, y + b))
+            for i, (x, y) in enumerate(pts):
+                s.blob(x, y, 1.9 - i * 0.12, 1.6 - i * 0.1, "shell", bands=(-0.35, 0.05, 0.55, 0.86, 0.97))
+            tx, ty = pts[-1]
+            s.blob(tx, ty + 1.5 * (1 if not back else -0.3), 1.5, 1.6, "sting", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+            s.dot(tx, ty + 3 * (1 if not back else -0.2), "sting", 0)
+        # legs, four pairs, splayed
+        for i, by in enumerate((10, 12, 14, 16)):
+            for side in (-1, 1):
+                group = (i + (0 if side < 0 else 1)) % 2
+                lift = tri_lift(f, group)
+                s.limb([(12 + side * 3, by + b), (12 + side * 7, by - 1.5 + b + lift * 0.5),
+                        (12 + side * 9.5, by + 3 + lift)], 0.6, "leg", r_end=0.4)
+        if back:
+            tail_first = False
+        else:
+            tail_first = True
+        if tail_first:
+            tail()
+        s.blob(12, 13 + b, 4.5, 4, "shell", bands=(-0.4, 0.0, 0.55, 0.88, 0.98), flat=0.7)
+        for y in (11.5, 13.5):
+            s.line([(8.5, y + b), (15.5, y + b)], "shell", 1)
+        cy = 17.5 + b if not back else 8 + b
+        o = [0, 1, 0, 1][f]
+        for side in (-1, 1):   # the pincers
+            s.limb([(12 + side * 3, 13 + b + d * 2), (12 + side * 6, cy)], 0.9, "claw", r_end=0.8)
+            s.blob(12 + side * 6.5, cy + d * 1.5, 2, 1.6, "claw", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+            s.limb([(12 + side * 6.5, cy + d * 2.5), (12 + side * (4.5 - o * 0.5), cy + d * 3.5)], 0.5, "claw",
+                   r_end=0.3)
+        if not back:
+            s.blob(12, 16.5 + b, 2.6, 1.8, "shell", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+            s.dot(11, 16 + b, "ff3b4d")
+            s.dot(13, 16 + b, "ff3b4d")
+        else:
+            tail()
+    else:
+        # far legs, body, tail arching over to the front, pincers ahead, near legs
+        for i, bx in enumerate((7, 9.5, 12, 14.5)):
+            group = (i + 1) % 2
+            lift = tri_lift(f, group)
+            reach = tri_reach(f, group)
+            s.limb([(bx, 16 + b), (bx + 1 + reach * 0.4, 16 + b + lift * 0.4), (bx + reach * 0.8, 20 + lift)], 0.5,
+                   "leg", r_end=0.35)
+        s.shade(lambda x, y: y > 15, -1)
+        pts = []
+        for i in range(6):
+            t = i / 5
+            a = math.pi * (1.0 - t * 0.95)
+            pts.append((9 + math.cos(a) * 6.5 + 1.5, 15 - math.sin(a) * (8 + sway) + b))
+        for i, (x, y) in enumerate(pts):
+            s.blob(x, y, 1.8 - i * 0.1, 1.6 - i * 0.1, "shell", bands=(-0.35, 0.05, 0.55, 0.86, 0.97))
+        tx, ty = pts[-1]
+        s.blob(tx + 0.5, ty + 1.5, 1.5, 1.4, "sting", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        s.limb([(tx + 1, ty + 2.5), (tx + 0.5, ty + 4)], 0.4, "sting", r_end=0.25)
+        s.blob(11.5, 16 + b, 5.5, 2.4, "shell", bands=(-0.4, 0.0, 0.55, 0.88, 0.98))
+        s.blob(17, 16 + b, 2, 1.8, "shell", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        s.dot(17.5, 15 + b, "ff3b4d")
+        o = [0, 1, 0, 1][f]
+        s.limb([(17, 17 + b), (19.5, 18.5 + b)], 0.8, "claw", r_end=0.8)
+        s.blob(21, 18 + b, 1.9, 1.5, "claw", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        s.limb([(22.5, 17.5 + b), (23.5, 16.5 + b - o * 0.5)], 0.45, "claw", r_end=0.3)
+        for i, bx in enumerate((6.5, 9, 11.5, 14)):
+            group = i % 2
+            lift = tri_lift(f, group)
+            reach = tri_reach(f, group)
+            s.limb([(bx, 17 + b), (bx + 1 + reach * 0.4, 18 + b + lift * 0.4), (bx + reach * 0.8, 21.5 + lift)], 0.6,
+                   "leg", r_end=0.4)
+
+
+# Stag beetle: a beetle with a great pair of antler-jaws
+
+def stag(s, facing, f):
+    beetle(s, facing, f, mat_bone="horn")
+    b = BOB[f]
+    o = [0, 0.8, 0, 0.8][f]
+    if facing == "down":
+        for side in (-1, 1):
+            s.limb([(12 + side * 2, 18 + b), (12 + side * (5.5 + o), 19 + b), (12 + side * (6.5 + o), 21.5 + b),
+                    (12 + side * (4 + o * 0.5), 23 + b)], 1.2, "horn", r_end=0.45)
+            s.limb([(12 + side * (6.5 + o), 21 + b), (12 + side * (8.5 + o), 20 + b)], 0.6, "horn", r_end=0.3)
+    elif facing == "up":
+        for side in (-1, 1):
+            s.limb([(12 + side * 3, 4 + b), (12 + side * (5 + o), 1.5 + b), (12 + side * (3.5 + o), 0.3 + b)], 0.8,
+                   "horn", r_end=0.35)
+    else:
+        s.limb([(21, 16 + b), (23, 14.5 + b), (23.5, 12 + b + o), (22, 11 + b + o)], 1.0, "horn", r_end=0.4)
+        s.limb([(23.3, 13.5 + b), (23.8, 15 + b)], 0.5, "horn", r_end=0.3)
+
+
+DESIGNS.update({"firefly": firefly, "scorpion": scorpion, "stag": stag})
+FLIERS.add("firefly")

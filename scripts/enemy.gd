@@ -10,8 +10,8 @@ const GHOSTS_TEX: Texture2D = preload("res://assets/ghosts.png")
 ## The insects as they walk (tools/make_overworld_creatures.py): three-quarter
 ## view, 24 px, facing where they go -- rows: down 0-3, side 4-7, up 8-11.
 const INSECTS_WALK_TEX: Texture2D = preload("res://assets/insects_walk.png")
-const WALK_ART := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]   ## insects drawn for it
-const FLIERS := [4, 5, 12, 13]     ## these fly: they flap, and hover over their shadow
+const WALK_ART := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]   ## insects drawn for it
+const FLIERS := [4, 5, 12, 13, 16, 17]     ## these fly: they flap, and hover over their shadow
 ## The demons as they walk (same tool, overworld_demons.py): 24 x 32 cells,
 ## same rows. Each moves its own way -- see demon_frame().
 const DEMONS_WALK_TEX: Texture2D = preload("res://assets/demons_walk.png")
@@ -132,7 +132,8 @@ func walk_frame() -> int:
 
 
 ## The frame of the demon walk sheet, by how each kind moves (variant / 2):
-## 0 grinner, 3 hollow: step left, step right; 1 many-eyes: oozes, squash and
+## 0 grinner, 3 hollow, 6 marionette, 7 witch, 8 grandmother: step left, step
+## right; 1 many-eyes: oozes, squash and
 ## stretch every step; 4 maw: hops, crouch-spring-air-land every step;
 ## 2 wraith, 5 weeper & bride: drift and glide all the time, slower when still.
 func demon_frame() -> int:
@@ -234,3 +235,28 @@ func paint(ci: CanvasItem, at: Vector2) -> void:
 	else:
 		ci.draw_texture_rect_region(tex, Rect2(at + dst.position, dst.size), src, mod)
 	ci.draw_set_transform(Vector2.ZERO)
+	_paint_rarity(ci, at + dst.position, dst.size)
+
+
+## Rare creatures catch the light now and then; legendary ones are ringed by
+## slow motes of gold. (Common and uncommon ones look like themselves.)
+func _paint_rarity(ci: CanvasItem, top_left: Vector2, size: Vector2) -> void:
+	var t := String(info.get("tier", "COMMON")) if info != null else "COMMON"
+	if t == "RARE":
+		var ph := fmod(_time * 0.8 + float(variant) * 0.61, 2.6)
+		if ph < 0.6:
+			var a := 1.0 - absf(ph / 0.3 - 1.0)
+			var p := (top_left + Vector2(size.x * (0.3 + 0.4 * fmod(float(variant) * 0.37, 1.0)), size.y * 0.35)).round()
+			var c := Color(1.0, 0.97, 0.85, a)
+			ci.draw_rect(Rect2(p, Vector2(1, 1)), c)
+			for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+				ci.draw_rect(Rect2(p + d, Vector2(1, 1)), Color(c, a * 0.6))
+	elif t == "LEGENDARY":
+		var centre := top_left + size * Vector2(0.5, 0.55)
+		for i in 4:
+			var ang := _time * 1.3 + i * TAU / 4.0
+			var p := (centre + Vector2(cos(ang) * size.x * 0.42, sin(ang) * size.y * 0.22 - 2.0)).round()
+			var front := sin(ang) > 0.0
+			ci.draw_rect(Rect2(p, Vector2(1, 1)), Color(1.0, 0.84, 0.35, 0.95 if front else 0.45))
+		if fmod(_time, 1.7) < 0.25:
+			ci.draw_rect(Rect2((centre + Vector2(-3, -size.y * 0.3)).round(), Vector2(1, 1)), Color(1, 1, 0.9, 0.9))
