@@ -3,7 +3,8 @@
 // bands; the underside of every clump sits in shade, and the rim darkens
 // to an outline -- so each tree reads as its own tree, as in hand-drawn art.
 shader_type spatial;
-render_mode diffuse_toon, specular_disabled, cull_back, shadows_disabled;
+render_mode specular_disabled, cull_back, shadows_disabled;
+#include "res://shaders/light3d.gdshaderinc"
 
 uniform sampler2D leaves : source_color, filter_nearest, repeat_enable;
 uniform float uv_scale = 1.0;

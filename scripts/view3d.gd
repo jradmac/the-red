@@ -20,6 +20,10 @@ extends Node
 const PITCH := deg_to_rad(52.0)     ## how steeply the camera looks down
 const DIST := 22.0                  ## camera distance (tiles) from the spot it looks at
 const LIGHT_POOL := 16              ## lamps, candles, wisps... at once (nearest first)
+const LANTERN_Y := 1.3              ## how high a lantern is held (walls are ~1.05)
+const SHADOW_LIGHTS := 4            ## ...the nearest this many cast shadows (walls block them)
+const HALO_SHADER := preload("res://shaders/halo3d.gdshader")
+const GRADE_SHADER := preload("res://shaders/grade3d.gdshader")
 const DECAL_TILES := Vector2i(48, 40)   ## the stretch of floor drawn on, around each camera
 
 static var enabled := _load_enabled()   ## the "3D WORLD" setting
@@ -46,6 +50,8 @@ var _coop_hide: Array = []    ## two-player: their darkness layers etc., hidden 
 var coop_centers: Array = []  ## two-player: where each camera looks (2D pixels), set by CoopView
 var _lights: Array[OmniLight3D] = []
 var _lanterns := {}           ## Hero -> OmniLight3D (with shadows)
+var _halos: Array[MeshInstance3D] = []   ## the glow in the air round each light (halo3d.gdshader)
+var _grade: ShaderMaterial    ## the finishing pass over the picture (grade3d.gdshader)
 var _built := false
 var _time := 0.0
 var _ground_meshes: Array[ArrayMesh] = []
@@ -89,7 +95,11 @@ func setup(m: Node) -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.02, 0.015, 0.03)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	# overlapping lamps roll off toward white like a camera's highlights,
+	# instead of clipping flat; exposure lifts the mid-tones back
+	env.tonemap_mode = Environment.TONE_MAPPER_REINHARDT
+	env.tonemap_white = 2.2
+	env.tonemap_exposure = 1.3
 	we.environment = env
 	vp.add_child(we)
 	sun = DirectionalLight3D.new()
@@ -102,10 +112,16 @@ func setup(m: Node) -> void:
 	for i in LIGHT_POOL:
 		var l := OmniLight3D.new()
 		l.visible = false
-		l.shadow_enabled = false
-		l.omni_attenuation = 1.4
+		# the nearest few are blocked by walls (shadow maps);
+		# the rest are small or far enough off that it doesn't show
+		l.shadow_enabled = i < SHADOW_LIGHTS
+		l.omni_shadow_mode = OmniLight3D.SHADOW_CUBE
+		l.shadow_bias = 0.1
+		l.omni_attenuation = 1.3
 		root.add_child(l)
 		_lights.append(l)
+	_grade = ShaderMaterial.new()
+	_grade.shader = GRADE_SHADER
 	# on screen: the 3D picture, above the 2D world (layer 0) and its old
 	# darkness (layer 1), below the HUD (4) and menus
 	layer = CanvasLayer.new()
@@ -115,6 +131,7 @@ func setup(m: Node) -> void:
 	screen.texture = vp.get_texture()
 	screen.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	screen.size = Vector2(360, 240)
+	screen.material = _grade
 	layer.add_child(screen)
 	sprites = SpriteHost.new()
 	sprites.view = self
@@ -161,6 +178,8 @@ func build() -> void:
 	traps3d = Traps3D.new()
 	root.add_child(traps3d)
 	traps3d.build(self)
+	# everything lit by the same light model (light_style.gd)
+	LightStyle.convert(root)
 	_build_decals()
 	_built = true
 	set_active(enabled)
@@ -221,6 +240,7 @@ func _refresh_display() -> void:
 				tr.texture = (v.vp as SubViewport).get_texture()
 				tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 				tr.size = Vector2((_coop_svs[i] as SubViewport).size)
+				tr.material = _grade
 				cl.add_child(tr)
 				display.add_child(cl)
 				v.show = cl
@@ -352,9 +372,11 @@ func camera_for(p: Vector3) -> Camera3D:
 
 
 ## How lit a spot is (for tinting the sprites): the daylight, plus every
-## lantern, lamp and candle near it.
+## lantern, lamp and candle near it -- with the same falloff and the same
+## hot-heart / deep-edge colour as the light on the ground (light3d.gdshaderinc),
+## so a hero walking out of a lamp's pool fades with it.
 func light_at(p: Vector3) -> Color:
-	var c := env.ambient_light_color * env.ambient_light_energy * 1.3
+	var c := env.ambient_light_color * env.ambient_light_energy * 1.6
 	c += sun.light_color * sun.light_energy * 0.7
 	var ls: Array = _lanterns.values() + _lights
 	for l in ls:
@@ -364,9 +386,28 @@ func light_at(p: Vector3) -> Color:
 		var d := o.position.distance_to(p + Vector3(0, 0.6, 0))
 		if d >= o.omni_range:
 			continue
-		var att := pow(1.0 - d / o.omni_range, o.omni_attenuation)
-		c += o.light_color * o.light_energy * att * 0.9
-	return Color(clampf(c.r, 0.06, 1.0), clampf(c.g, 0.06, 1.0), clampf(c.b, 0.07, 1.0))
+		var k := pow(clampf(omni_falloff(d, o.omni_range, o.omni_attenuation), 0.0, 1.0), 0.75)
+		c += flame(o.light_color, k) * o.light_energy * k * 0.85
+	return Color(clampf(c.r, 0.07, 1.15), clampf(c.g, 0.06, 1.15), clampf(c.b, 0.09, 1.15))
+
+
+## The engine's own falloff for an omni light (distance d, range r, decay a).
+static func omni_falloff(d: float, r: float, a: float) -> float:
+	var nd := d / r
+	nd = maxf(1.0 - nd * nd * nd * nd, 0.0)
+	return nd * nd * pow(maxf(d, 0.0001), -a)
+
+
+## A light's colour at strength k: deep and saturated at the edge, hot at the heart.
+static func flame(hue: Color, k: float) -> Color:
+	var m := maxf(hue.r, maxf(hue.g, hue.b))
+	var h := Vector3(hue.r, hue.g, hue.b) / maxf(m, 0.0001)
+	var edge := Vector3(pow(h.x, 1.9), pow(h.y, 1.9), pow(h.z, 1.9))
+	edge /= maxf(edge.x, maxf(edge.y, edge.z))
+	var heart := h.lerp(Vector3(1.0, 0.97, 0.9), 0.42)
+	var t := smoothstep(0.3, 1.0, k)
+	var v := edge.lerp(heart, t)
+	return Color(v.x, v.y, v.z)
 
 
 func _update_lights(ts: Array[Vector3]) -> void:
@@ -377,9 +418,12 @@ func _update_lights(ts: Array[Vector3]) -> void:
 	sun.light_energy = lerpf(0.08, 0.95, dl)
 	sun.light_color = Color(0.55, 0.6, 0.95).lerp(Color(1.0, 0.95, 0.85), dl).lerp(Color(1.0, 0.7, 0.45), warm * 0.8)
 	sun.shadow_enabled = dl > 0.05
-	env.ambient_light_color = Color(0.2, 0.18, 0.3).lerp(Color(0.62, 0.62, 0.72), dl)
-	env.ambient_light_energy = lerpf(0.2, 0.55, dl)
-	env.background_color = Color(0.02, 0.015, 0.03).lerp(Color(0.25, 0.25, 0.3), dl)
+	# the dark isn't black: a deep, cold indigo that the warm lights cut into
+	env.ambient_light_color = Color(0.17, 0.14, 0.34).lerp(Color(0.62, 0.64, 0.76), dl)
+	env.ambient_light_energy = lerpf(0.24, 0.55, dl)
+	env.background_color = Color(0.02, 0.015, 0.035).lerp(Color(0.25, 0.25, 0.3), dl)
+	_grade.set_shader_parameter("night", 1.0 - dl)
+	env.tonemap_exposure = lerpf(1.3, 1.0, dl)   # (the night needs the lift; the day doesn't)
 	# lanterns: one real light each, casting shadows
 	for h in Hero.all:
 		if not _lanterns.has(h):
@@ -399,7 +443,8 @@ func _update_lights(ts: Array[Vector3]) -> void:
 		var src: Dictionary = h.lantern_light
 		lanterns[src] = true
 		var l: OmniLight3D = _lanterns[h]
-		_place_light(l, src, 1.0)
+		_place_light(l, src, 1.15, 1.8)
+		l.omni_attenuation = 1.0   # (your lantern carries furthest)
 	# everything else that glows: the nearest ones get a light
 	var srcs: Array = []
 	for s in main.lighting._sources:
@@ -418,28 +463,63 @@ func _update_lights(ts: Array[Vector3]) -> void:
 			_place_light(l, srcs[i][1], 0.8)
 		else:
 			l.visible = false
+	_update_halos()
+
+
+## The glow hanging in the air round every flame: a lantern's soft and
+## close, a flare's or a lamp's wider. Hidden by walls in front of it.
+func _update_halos() -> void:
+	var ls: Array = _lanterns.values() + _lights
+	while _halos.size() < ls.size():
+		var mi := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2.ONE
+		mi.mesh = q
+		var m := ShaderMaterial.new()
+		m.shader = HALO_SHADER
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(mi)
+		_halos.append(mi)
+	var night: float = 1.0 - (main.day.light if main.day != null else 0.0)
+	for i in _halos.size():
+		var mi := _halos[i]
+		var o: OmniLight3D = ls[i] if i < ls.size() else null
+		if o == null or not o.visible or night < 0.05:
+			mi.visible = false
+			continue
+		mi.visible = true
+		mi.position = o.position
+		var size := clampf(o.omni_range * 0.32, 0.9, 3.2)
+		mi.scale = Vector3(size, size, size)
+		var m := mi.material_override as ShaderMaterial
+		m.set_shader_parameter("tint", o.light_color)
+		m.set_shader_parameter("strength", clampf(o.light_energy, 0.0, 2.0) * 0.32 * night)
 
 
 func _source_pos(s: Dictionary) -> Vector3:
 	var node: Node2D = s.node
 	var p: Vector2 = node.global_position + s.offset
 	if node is Player:
-		# a lantern: held at your side (its 2D offset upward is its height)
+		# a lantern: held up at your side, a little above the walls' tops, so
+		# its pool reaches along the corridor and catches the coping
 		var base := to3d(node.global_position)
-		return Vector3(p.x / World.TILE, base.y + 0.9, base.z)
+		return Vector3(p.x / World.TILE, base.y + LANTERN_Y, base.z)
 	var x := p.x / World.TILE
 	var z := p.y / World.TILE
-	return Vector3(x, ground_at(x, z) + 0.6, z)
+	return Vector3(x, ground_at(x, z) + 0.8, z)
 
 
-func _place_light(l: OmniLight3D, s: Dictionary, k: float) -> void:
+func _place_light(l: OmniLight3D, s: Dictionary, k: float, reach := 1.45) -> void:
 	var r: float = s.radius
 	if s.flicker > 0.0:
 		var t: float = _time + s.seed
 		r *= 1.0 + (sin(t * 7.3) * 0.5 + sin(t * 17.1) * 0.3 + sin(t * 31.7) * 0.2) * s.flicker
 	l.position = _source_pos(s)
-	l.omni_range = maxf(r / World.TILE * 1.45, 0.1)
-	l.light_energy = s.energy * 1.6 * k
+	l.omni_range = maxf(r / World.TILE * reach, 0.1)
+	# by day the sun outshines them: lamps and candles fade back
+	var dl: float = main.day.light if main.day != null else 0.0
+	l.light_energy = s.energy * 1.6 * k * (1.0 - 0.92 * dl)
 	l.light_color = s.color
 	l.visible = s.energy > 0.01 and r > 1.0
 
