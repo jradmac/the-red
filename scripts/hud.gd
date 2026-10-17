@@ -144,7 +144,7 @@ func _process(delta: float) -> void:
 		var d := doors.depth_at(player.cell)
 		if d > _deepest:
 			_deepest = d
-			_zone_name = "DEPTH " + str(d) + " OF " + str(doors.max_depth())
+			_zone_name = "DEPTH " + str(d)   # (never how many there are: the dark has no bottom you can see)
 			_zone_sub = "THE CREATURES HERE GROW STRONGER - AND SO DOES THE LOOT"
 			_zone_col = Color("f2e6c8")
 			_zone_t = 0.0
