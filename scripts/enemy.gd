@@ -10,8 +10,11 @@ const GHOSTS_TEX: Texture2D = preload("res://assets/ghosts.png")
 ## The insects as they walk (tools/make_overworld_creatures.py): three-quarter
 ## view, 24 px, facing where they go -- rows: down 0-3, side 4-7, up 8-11.
 const INSECTS_WALK_TEX: Texture2D = preload("res://assets/insects_walk.png")
-const WALK_ART := [0, 1, 4, 5]     ## insects drawn for it so far (the rest use insects.png)
-const FLIERS := [4, 5]             ## these fly: they flap, and hover over their shadow
+const WALK_ART := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]   ## insects drawn for it
+const FLIERS := [4, 5, 12, 13]     ## these fly: they flap, and hover over their shadow
+## The demons as they walk (same tool, overworld_demons.py): 24 x 32 cells,
+## same rows. Each moves its own way -- see demon_frame().
+const DEMONS_WALK_TEX: Texture2D = preload("res://assets/demons_walk.png")
 
 var kind := ""          # "insect", "demon", "ghost"
 var variant := 0        # column in its sprite sheet
@@ -128,6 +131,24 @@ func walk_frame() -> int:
 	return 0
 
 
+## The frame of the demon walk sheet, by how each kind moves (variant / 2):
+## 0 grinner, 3 hollow: step left, step right; 1 many-eyes: oozes, squash and
+## stretch every step; 4 maw: hops, crouch-spring-air-land every step;
+## 2 wraith, 5 weeper & bride: drift and glide all the time, slower when still.
+func demon_frame() -> int:
+	var g := variant / 2
+	match g:
+		2, 5:
+			return int(_time * (6.0 if moving else 2.5) + variant) % 4
+		1, 4:
+			if moving or lunging:
+				return int(clampf(_t, 0.0, 0.999) * 4.0) % 4
+			return [0, 3][int(_time * 1.2 + float(variant) * 0.37) % 2] if g == 1 else 0
+	if moving or lunging:
+		return (int(clampf(_t, 0.0, 0.999) * 2.0) + (_steps % 2) * 2) % 4
+	return 0
+
+
 ## Which animation frame (row of its sheet) to show right now.
 func anim_frame() -> int:
 	if kind == "ghost":
@@ -170,10 +191,11 @@ func paint(ci: CanvasItem, at: Vector2) -> void:
 				src = Rect2(variant * 16, anim_frame() * 16, 16, 16)
 				dst = Rect2(Vector2(0, bob), Vector2(16, 16))
 		"demon":
-			tex = DEMONS_TEX
-			bob = roundf(sin(_time * 3.0))
-			src = Rect2(variant * 16, anim_frame() * 24, 16, 24)
-			dst = Rect2(Vector2(0, -8 + bob), Vector2(16, 24))
+			tex = DEMONS_WALK_TEX
+			if variant / 2 == 2:
+				bob = -2.0 + roundf(sin(_time * 2.2 + variant))   # wraiths float
+			src = Rect2(variant * 24, ([0, 8, 4][facing] + demon_frame()) * 32, 24, 32)   # (rows: down, side, up)
+			dst = Rect2(Vector2(-4, -15 + bob), Vector2(24, 32))
 		"ghost":
 			tex = GHOSTS_TEX
 			bob = roundf(sin(_time * 2.0) * 2.0) - 3.0
@@ -204,7 +226,7 @@ func paint(ci: CanvasItem, at: Vector2) -> void:
 					ci.draw_texture_rect_region(tex, ghost_dst, src, Color(0.7, 0.8, 1.0, 0.18 * fade / k))
 		mod.a *= fade
 	var mirror := facing_left
-	if kind == "insect" and WALK_ART.has(variant):
+	if kind == "demon" or (kind == "insect" and WALK_ART.has(variant)):
 		mirror = facing_left and facing == 2   # (only the side view turns round)
 	if mirror:   # mirror through a flipped transform
 		ci.draw_set_transform(at + Vector2(16, 0), 0.0, Vector2(-1, 1))

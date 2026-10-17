@@ -35,7 +35,7 @@ def tri_reach(f, group):
 
 # --- Beetle ------------------------------------------------------------------------------
 
-def beetle(s, facing, f):
+def beetle(s, facing, f, mat_bone="bone"):
     b = BOB[f]
     if facing == "down":
         # legs (behind the body): three pairs, out to the sides, alternating
@@ -59,8 +59,8 @@ def beetle(s, facing, f):
         s.blob(12, 13.5 + b, 5.5, 2.6, "shell", bands=(-0.4, 0.0, 0.6, 0.9, 0.99), flat=0.7)
         s.blob(12, 16.5 + b, 3.6, 2.6, "leg", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
         o = 1 if f in (1, 3) else 0
-        s.limb([(10, 18 + b), (8 - o, 19.5 + b), (9.5 - o, 21 + b)], 0.8, "bone", r_end=0.45)
-        s.limb([(14, 18 + b), (16 + o, 19.5 + b), (14.5 + o, 21 + b)], 0.8, "bone", r_end=0.45)
+        s.limb([(10, 18 + b), (8 - o, 19.5 + b), (9.5 - o, 21 + b)], 0.8, mat_bone, r_end=0.45)
+        s.limb([(14, 18 + b), (16 + o, 19.5 + b), (14.5 + o, 21 + b)], 0.8, mat_bone, r_end=0.45)
         tw = [0, 1, 0, -1][f]
         for side in (-1, 1):
             s.limb([(12 + side * 2.5, 15 + b), (12 + side * 5, 13.5 + b), (12 + side * (7.5 + tw * 0.5), 11.5 + b)], 0.5, "leg", r_end=0.45)
@@ -111,7 +111,7 @@ def beetle(s, facing, f):
         s.blob(17.5, 13.5 + b, 3, 2.5, "shell", bands=(-0.4, 0.0, 0.6, 0.9, 0.99))
         s.blob(20, 15 + b, 2.6, 2.2, "leg", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
         o = 1 if f in (1, 3) else 0
-        s.limb([(21.5, 16.5 + b), (23, 17 + b + o), (22, 18.5 + b + o)], 0.7, "bone", r_end=0.4)
+        s.limb([(21.5, 16.5 + b), (23, 17 + b + o), (22, 18.5 + b + o)], 0.7, mat_bone, r_end=0.4)
         tw = [0, 1, 0, -1][f]
         s.limb([(20.5, 13 + b), (22, 10.5 + b), (23, 8.5 + b + tw * 0.5)], 0.5, "leg", r_end=0.45)
         s.dot(21, 14 + b, "ff3b4d")
@@ -195,5 +195,325 @@ def moth(s, facing, f):
         wing(0.0, False)
 
 
-DESIGNS = {"beetle": beetle, "moth": moth}
-FLIERS = {"moth"}
+
+# --- Spider -------------------------------------------------------------------------------
+
+def _spider_legs(s, facing, f, b, near_only=False):
+    if facing in ("down", "up"):
+        sgn = 1 if facing == "down" else -1
+        for i in range(4):
+            for side in (-1, 1):
+                group = (i + (0 if side < 0 else 1)) % 2
+                lift = tri_lift(f, group)
+                by = 12 + (i - 1.5) * 1.6 * sgn + b
+                knee = (12 + side * (7.5 + i * 0.4), by - 5 + lift * 0.6)
+                foot = (12 + side * (10.5 + (1.5 - abs(i - 1.5)) * 0.8), 13 + i * 2.6 * sgn + (4 if sgn < 0 else 0) + lift)
+                s.limb([(12 + side * 2.5, by), knee, foot], 0.75, "leg", r_end=0.45)
+
+
+def spider(s, facing, f):
+    b = BOB[f]
+    if facing == "down":
+        _spider_legs(s, "down", f, b)
+        # abdomen behind, with its mark, then the head end with its eyes and fangs
+        s.blob(12, 8.5 + b, 6.5, 5.5, "body", bands=(-0.35, 0.05, 0.55, 0.86, 0.97), dither=0.12)
+        s.poly([(10.5, 5 + b), (13.5, 5 + b), (14.5, 7.5 + b), (12, 9.5 + b), (9.5, 7.5 + b)], "mark", grad=(4, 1), outline=False)
+        s.dot(11, 6.5 + b, "body", 0)
+        s.dot(13, 6.5 + b, "body", 0)
+        s.blob(12, 14 + b, 4.6, 3.6, "body", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        for (x, y) in ((10.5, 14), (13.5, 14), (11.5, 12.8), (12.5, 12.8)):
+            s.dot(x, y + b, "ff3b4d")
+        s.dot(10, 13 + b, (255, 210, 210, 255))
+        o = 1 if f in (1, 3) else 0
+        s.limb([(11, 16.5 + b), (10.5 - o * 0.5, 18.5 + b)], 0.7, "fang", r_end=0.4)
+        s.limb([(13, 16.5 + b), (13.5 + o * 0.5, 18.5 + b)], 0.7, "fang", r_end=0.4)
+    elif facing == "up":
+        # the head end beyond, the big abdomen (and its mark) nearest
+        s.blob(12, 7 + b, 4, 3, "body", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        _spider_legs(s, "up", f, b)
+        s.blob(12, 13.5 + b, 7, 6.2, "body", bands=(-0.35, 0.05, 0.55, 0.86, 0.97), dither=0.12)
+        s.poly([(10, 10 + b), (14, 10 + b), (15.5, 13 + b), (12, 16.5 + b), (8.5, 13 + b)], "mark", grad=(4, 1), outline=False)
+        s.blob(10.8, 12 + b, 0.9, 1.0, "body", bands=(9,), outline=False)
+        s.blob(13.2, 12 + b, 0.9, 1.0, "body", bands=(9,), outline=False)
+        s.line([(12, 14 + b), (12, 15 + b)], "body", 0)
+    else:
+        # far legs (only their tips show), abdomen, head, near legs -- each leg
+        # rises to a high knee and comes down to a fine foot
+        KNEES = ((7, 5.5), (10.5, 4.5), (15, 4.5), (18.5, 6))
+        FEET = (3, 8, 15.5, 21)
+        def legs(near, which=(0, 1, 2, 3)):
+            for i in which:
+                group = (i + (0 if near else 1)) % 2
+                lift = tri_lift(f, group)
+                reach = tri_reach(f, group)
+                kx, ky = KNEES[i]
+                if not near:
+                    kx += 1.5
+                    ky += 1.5
+                s.limb([(11.5 + i * 1.2, 13.5 + b), (kx + reach * 0.4, ky + b + lift * 0.5),
+                        (FEET[i] + reach, (21.5 if near else 19.5) + lift)], 0.7 if near else 0.55, "leg", r_end=0.4)
+        legs(False, (2, 3))
+        s.shade(lambda x, y: True, -1)
+        legs(True, (0, 1))   # the back legs pass behind the abdomen
+        s.blob(6.5, 12.5 + b, 5.6, 4.6, "body", bands=(-0.35, 0.05, 0.55, 0.86, 0.97), dither=0.12)
+        s.poly([(4.5, 9.5 + b), (7.5, 9 + b), (9, 11 + b), (6.5, 12.5 + b)], "mark", grad=(4, 1), outline=False)
+        s.blob(13.5, 14 + b, 3.6, 2.8, "body", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        s.dot(16, 13 + b, "ff3b4d")
+        s.dot(15, 12.5 + b, "ff3b4d")
+        s.limb([(16.5, 15.5 + b), (17.5, 17 + b)], 0.6, "fang", r_end=0.4)
+        legs(True, (2, 3))
+
+
+# --- Centipede ----------------------------------------------------------------------------
+
+def centipede(s, facing, f):
+    n = 9
+    ph = f / 4.0
+    pts = []
+    for k in range(n):
+        t = k / (n - 1)                       # 0 = head .. 1 = tail
+        wave = math.sin((t * 1.6 - ph) * 2 * math.pi)
+        if facing == "down":
+            pts.append((12 + wave * 1.8, 18.5 - t * 14))
+        elif facing == "up":
+            pts.append((12 + wave * 1.8, 5 + t * 14))
+        else:
+            pts.append((20 - t * 17, 15 + wave * 1.2))
+    # legs: a pair per segment, flicking forward and back in a ripple down the body
+    for k in range(1, n):
+        x, y = pts[k]
+        flick = 1 if (k + f) % 2 else -1
+        if facing == "side":
+            for dark in (True, False):
+                lx = x + flick * 1.2 - (0.6 if dark else 0)
+                s.limb([(x, y + 1), (lx, y + (3 if not dark else 2.5))], 0.45, "leg", r_end=0.35)
+        else:
+            dy = 1 if facing == "down" else -1
+            for side in (-1, 1):
+                s.limb([(x + side * 2, y), (x + side * 5, y + flick * dy * 1.3)], 0.5, "leg", r_end=0.35)
+    order = range(n - 1, -1, -1) if facing in ("down", "side") else range(n)
+    for k in order:
+        x, y = pts[k]
+        r = (2.4 if k == 0 else 2.2 - k * 0.08) * (1.0 if facing == "side" else 1.25)
+        s.blob(x, y, r, r * (0.8 if facing == "side" else 0.62), "body", bands=(-0.3, 0.1, 0.55, 0.88, 0.99))
+        if k > 0:
+            s.dot(x, y - 1, "body", 4)
+    # head details: fangs and long antennae
+    hx, hy = pts[0]
+    tw = [0, 1, 0, -1][f]
+    if facing == "down":
+        s.limb([(hx - 1, hy + 1.5), (hx - 2, hy + 3)], 0.6, "fang", r_end=0.4)
+        s.limb([(hx + 1, hy + 1.5), (hx + 2, hy + 3)], 0.6, "fang", r_end=0.4)
+        s.limb([(hx - 1, hy - 1), (hx - 4, hy - 3), (hx - 6 + tw * 0.5, hy - 2)], 0.4, "leg", r_end=0.35)
+        s.limb([(hx + 1, hy - 1), (hx + 4, hy - 3), (hx + 6 - tw * 0.5, hy - 2)], 0.4, "leg", r_end=0.35)
+        s.dot(hx - 1, hy, "ff3b4d")
+        s.dot(hx + 1, hy, "ff3b4d")
+    elif facing == "up":
+        s.limb([(hx - 1, hy - 1), (hx - 3, hy - 3.5), (hx - 5 + tw * 0.5, hy - 4)], 0.4, "leg", r_end=0.35)
+        s.limb([(hx + 1, hy - 1), (hx + 3, hy - 3.5), (hx + 5 - tw * 0.5, hy - 4)], 0.4, "leg", r_end=0.35)
+    else:
+        s.limb([(hx + 1.5, hy + 1), (hx + 3, hy + 2.5)], 0.6, "fang", r_end=0.4)
+        s.limb([(hx + 1, hy - 1.5), (hx + 2.5, hy - 4), (hx + 3.5, hy - 6 + tw * 0.5)], 0.4, "leg", r_end=0.35)
+        s.dot(hx + 1, hy - 0.5, "ff3b4d")
+    # a pair of tail feelers
+    tx, ty = pts[-1]
+    if facing == "side":
+        s.limb([(tx - 1, ty), (tx - 3, ty - 1.5)], 0.4, "leg", r_end=0.3)
+
+
+# --- Tick ---------------------------------------------------------------------------------
+
+def tick(s, facing, f):
+    sway = [0, 0.5, 0, -0.5][f]          # a slow, heavy waddle
+    b = [0, 0, -1, 0][f]
+    if facing in ("down", "up"):
+        fwd = 1 if facing == "down" else -1
+        for i in range(4):
+            for side in (-1, 1):
+                group = (i + (0 if side < 0 else 1)) % 2
+                lift = tri_lift(f, group) * 0.6
+                by = 12 + (i - 1.5) * 2.4 * fwd
+                foot = (12 + side * 9.5, by + 2.5 * fwd + 3 + lift)
+                s.limb([(12 + side * 5, by + b), (12 + side * 8, by - 1 + b + lift * 0.5), foot], 0.8, "leg", r_end=0.5)
+        if facing == "down":
+            s.blob(12 + sway, 10 + b, 7.5, 6.5, "body", bands=(-0.35, 0.05, 0.55, 0.86, 0.97))
+            s.line([(7 + sway, 9 + b), (9 + sway, 7 + b)], "body", 5)
+            s.blob(12 + sway, 15 + b, 3.6, 2.2, "plate", bands=(-0.4, 0.0, 0.6, 0.9, 0.99), flat=0.6)
+            s.blob(12 + sway, 17.5 + b, 1.8, 1.4, "plate", bands=(-0.4, 0.0, 0.6, 0.9, 0.99))
+            s.limb([(11.3 + sway, 18.5 + b), (11 + sway, 20 + b)], 0.5, "fang", r_end=0.35)
+            s.limb([(12.7 + sway, 18.5 + b), (13 + sway, 20 + b)], 0.5, "fang", r_end=0.35)
+            s.dot(11 + sway, 16.5 + b, "ff3b4d")
+            s.dot(13 + sway, 16.5 + b, "ff3b4d")
+        else:
+            s.blob(12 + sway, 6.5 + b, 2.8, 1.8, "plate", bands=(-0.4, 0.0, 0.6, 0.9, 0.99), flat=0.6)
+            s.blob(12 + sway, 12 + b, 7.5, 7, "body", bands=(-0.35, 0.05, 0.55, 0.86, 0.97))
+            s.line([(7 + sway, 10 + b), (9 + sway, 8 + b)], "body", 5)
+            for k in range(3):   # the wrinkles of the swollen back
+                s.line([(9 + sway, 12 + k * 2 + b), (15 + sway, 12 + k * 2 + b)], "body", 1)
+    else:
+        for i in range(4):
+            group = (i + 1) % 2
+            lift = tri_lift(f, group) * 0.6
+            s.limb([(8 + i * 2.5, 15 + b), (9 + i * 2.8, 17 + b + lift * 0.5), (8.5 + i * 3.2, 20.5 + lift)], 0.7, "leg", r_end=0.45)
+        s.shade(lambda x, y: True, -1)
+        s.blob(10 + sway * 0.5, 12.5 + b, 7.5, 5.8, "body", bands=(-0.35, 0.05, 0.55, 0.86, 0.97))
+        s.line([(5, 10 + b), (7, 8 + b), (10, 7 + b)], "body", 5)
+        s.blob(16.5, 12.5 + b, 3, 2.4, "plate", bands=(-0.4, 0.0, 0.6, 0.9, 0.99))
+        s.blob(19.5, 13.5 + b, 1.8, 1.4, "plate", bands=(-0.4, 0.0, 0.6, 0.9, 0.99))
+        s.limb([(20.5, 14.5 + b), (21.5, 16 + b)], 0.5, "fang", r_end=0.35)
+        s.dot(19, 12.5 + b, "ff3b4d")
+        for i in range(4):
+            group = i % 2
+            lift = tri_lift(f, group) * 0.6
+            s.limb([(7.5 + i * 2.6, 16 + b), (8.5 + i * 2.9, 18 + b + lift * 0.5), (8 + i * 3.4, 21.5 + lift)], 0.8, "leg", r_end=0.5)
+
+
+# --- Scarab (a horned beetle with a ridged shell) ------------------------------------------
+
+def scarab(s, facing, f):
+    beetle(s, facing, f, mat_bone="horn")
+    b = BOB[f]
+    # the ridges and the horn
+    if facing == "down":
+        for x in (8, 16):
+            s.line([(x, 4.5 + b), (x + (1 if x < 12 else -1), 12 + b)], "mark", 3)
+        s.limb([(12, 16 + b), (12, 13.5 + b), (11, 11.5 + b)], 0.9, "horn", r_end=0.45)
+    elif facing == "up":
+        for x in (7.5, 16.5):
+            s.line([(x, 6 + b), (x + (1 if x < 12 else -1), 16 + b)], "mark", 3)
+    else:
+        s.line([(5, 10 + b), (9, 7.5 + b), (14, 8.5 + b)], "mark", 3)
+        s.limb([(20.5, 13.5 + b), (22, 11 + b), (21.5, 9 + b)], 0.8, "horn", r_end=0.4)
+
+
+# --- Wasp (flies) -------------------------------------------------------------------------
+
+def wasp(s, facing, f):
+    up = f % 2 == 0                      # wings beat every frame: a buzz
+    hover = [0, 1, 0, 1][f]
+    pump = [0, 1, 0, -1][f]              # the abdomen pumps
+    if facing in ("down", "up"):
+        back = facing == "up"
+        hy, ty, ay = (15, 11, 6) if not back else (5, 9.5, 15)
+        # wings, out to the sides from the thorax
+        for side in (-1, 1):
+            if up:
+                pts = [(12 + side * 2, ty - 1), (12 + side * 9, ty - 6), (12 + side * 10, ty - 3.5), (12 + side * 3, ty + 1)]
+            else:
+                pts = [(12 + side * 2, ty), (12 + side * 10, ty + 1), (12 + side * 9, ty + 3.5), (12 + side * 3, ty + 2)]
+            s.poly([(x, y + hover) for x, y in pts], "wing", grad=(4, 2))
+        # legs dangling under the thorax
+        for side in (-1, 1):
+            for k in range(2):
+                s.limb([(12 + side * 1.5, ty + 1 + hover), (12 + side * (3 + k), ty + 4 + k + hover)], 0.45, "leg", r_end=0.35)
+        # abdomen (striped), thorax, head
+        def abdomen():
+            s.blob(12, ay + hover + pump * 0.5, 3.3, 4.2, "body", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+            for k in (-2, 0, 2):
+                s.line([(9.5, ay + k + hover + pump * 0.5), (14.5, ay + k + hover + pump * 0.5)], "band", 3)
+            if back:
+                s.limb([(12, ay + 4 + hover + pump * 0.5), (12, ay + 6.5 + hover + pump)], 0.5, "fang", r_end=0.3)
+        if not back:
+            abdomen()
+        s.blob(12, ty + hover, 2.6, 2.4, "body", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        s.blob(12, hy + hover, 2.5, 2.2, "body", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        if back:
+            abdomen()
+        else:
+            s.dot(10.5, hy + hover, "band", 4)
+            s.dot(13.5, hy + hover, "band", 4)
+            s.dot(11, hy - 0.5 + hover, "ff3b4d")
+            s.dot(13, hy - 0.5 + hover, "ff3b4d")
+            s.limb([(11, hy + 2 + hover), (10.5, hy + 3.5 + hover)], 0.5, "fang", r_end=0.3)
+            s.limb([(13, hy + 2 + hover), (13.5, hy + 3.5 + hover)], 0.5, "fang", r_end=0.3)
+        tw = [0, 1, 0, -1][f]
+        ay2 = hy - 2 if not back else hy - 1
+        s.limb([(11, ay2 + hover), (9, ay2 - 3 + hover), (8 + tw * 0.4, ay2 - 4.5 + hover)], 0.4, "leg", r_end=0.3)
+        s.limb([(13, ay2 + hover), (15, ay2 - 3 + hover), (16 - tw * 0.4, ay2 - 4.5 + hover)], 0.4, "leg", r_end=0.3)
+    else:
+        # far wing, abdomen, thorax, head, legs, near wing
+        def wingp(dx):
+            if up:
+                return [(13 + dx, 9), (8 + dx, 2), (11 + dx, 1), (16 + dx, 8)]
+            return [(13 + dx, 10), (6 + dx, 8.5), (7 + dx, 11), (14 + dx, 11)]
+        s.poly([(x, y + hover) for x, y in wingp(-1)], "wing", grad=(2, 1))
+        s.blob(7, 13.5 + hover + pump * 0.5, 4.3, 2.8, "body", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        for x in (5, 7.5, 10):
+            s.line([(x, 11.5 + hover + pump * 0.5), (x - 0.5, 15.5 + hover + pump * 0.5)], "band", 3)
+        s.limb([(3, 15 + hover + pump * 0.5), (1, 17 + hover + pump)], 0.5, "fang", r_end=0.3)
+        s.blob(14, 11 + hover, 2.6, 2.4, "body", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        s.blob(18, 11 + hover, 2.2, 2.2, "body", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        s.dot(19, 10.5 + hover, "ff3b4d")
+        s.limb([(19.5, 12.5 + hover), (20.5, 14 + hover)], 0.5, "fang", r_end=0.3)
+        tw = [0, 1, 0, -1][f]
+        s.limb([(18.5, 9 + hover), (20.5, 6.5 + hover), (22, 6 + hover + tw * 0.4)], 0.4, "leg", r_end=0.3)
+        for k in range(3):
+            s.limb([(13 + k, 13 + hover), (12.5 + k * 1.5, 16 + hover + (k % 2))], 0.45, "leg", r_end=0.35)
+        s.poly([(x, y + hover) for x, y in wingp(0.5)], "wing", grad=(4, 2))
+
+
+# --- Mantis (rocks as it walks, arms folded and raised) ------------------------------------
+
+def mantis(s, facing, f):
+    rock = [0, 1, 0, -1][f]
+    b = BOB[f]
+    if facing in ("down", "up"):
+        back = facing == "up"
+        # four walking legs, long and thin
+        for i, (by, fy) in enumerate(((13, 18), (15, 21.5))):
+            for side in (-1, 1):
+                group = (i + (0 if side < 0 else 1)) % 2
+                lift = tri_lift(f, group)
+                s.limb([(12 + side * 1.5, by + b), (12 + side * 7, by - 3 + b + lift * 0.6), (12 + side * 9, fy + lift)],
+                       0.6, "leg", r_end=0.4)
+        if not back:
+            s.blob(12 + rock * 0.3, 15 + b, 2.4, 5, "body", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))   # abdomen, behind
+            s.limb([(12 + rock * 0.5, 13 + b), (12 + rock, 7 + b)], 1.3, "body", r_end=1.0)      # neck / thorax
+            # the folded raptor arms, praying in front
+            for side in (-1, 1):
+                s.limb([(12 + side * 1.2 + rock, 9 + b), (12 + side * 4 + rock, 12 + b), (12 + side * 2 + rock, 8 + b),
+                        (12 + side * 1 + rock, 10 + b)], 0.85, "arm", r_end=0.6)
+            # the triangular head with its big eyes
+            hx = 12 + rock
+            s.poly([(hx - 4, 4 + b), (hx + 4, 4 + b), (hx, 8 + b)], "body", grad=(3, 1))
+            s.blob(hx - 3.2, 4 + b, 1.5, 1.5, "eye", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+            s.blob(hx + 3.2, 4 + b, 1.5, 1.5, "eye", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+            s.dot(hx - 3, 4 + b, "fang", 1)
+            s.dot(hx + 3, 4 + b, "fang", 1)
+            tw = [0, 1, 0, -1][f]
+            s.limb([(hx - 1, 3.5 + b), (hx - 3, 0.5 + b + tw * 0.3)], 0.35, "leg", r_end=0.3)
+            s.limb([(hx + 1, 3.5 + b), (hx + 3, 0.5 + b - tw * 0.3)], 0.35, "leg", r_end=0.3)
+        else:
+            hx = 12 + rock
+            s.poly([(hx - 3.5, 3 + b), (hx + 3.5, 3 + b), (hx, 6.5 + b)], "body", grad=(3, 1))
+            for side in (-1, 1):   # elbows of the folded arms showing past the body
+                s.limb([(hx + side * 1.5, 8 + b), (hx + side * 4, 10 + b)], 0.8, "arm", r_end=0.6)
+            s.limb([(12 + rock * 0.5, 13 + b), (hx, 6 + b)], 1.3, "body", r_end=1.0)
+            # the folded wings covering the abdomen, nearest
+            s.blob(12, 15 + b, 3, 5.5, "wing", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+            s.line([(12, 10.5 + b), (12, 20 + b)], "wing", 0)
+    else:
+        lean = rock * 0.6
+        for i, bx in enumerate((11, 13.5)):
+            group = (i + 1) % 2
+            lift = tri_lift(f, group)
+            reach = tri_reach(f, group)
+            s.limb([(bx, 14 + b), (bx - 2 + reach, 11 + b + lift * 0.6), (bx - 3 + reach * 1.5, 21 + lift)], 0.55, "leg", r_end=0.4)
+        s.shade(lambda x, y: True, -1)
+        s.limb([(3, 16 + b), (8, 14.5 + b), (12, 13.5 + b)], 2.2, "wing", r_end=1.6)    # abdomen under folded wings
+        s.limb([(12, 13.5 + b), (15 + lean, 8 + b), (16.5 + lean, 5 + b)], 1.2, "body", r_end=0.9)   # thorax, rearing up
+        s.limb([(15.5 + lean, 7.5 + b), (19 + lean, 9.5 + b), (17 + lean, 6 + b), (18 + lean, 8 + b)], 0.85, "arm", r_end=0.6)
+        hx = 17.5 + lean
+        s.poly([(hx - 1.5, 3 + b), (hx + 2.5, 3 + b), (hx + 2, 6.5 + b)], "body", grad=(3, 1))
+        s.blob(hx + 1, 3 + b, 1.4, 1.4, "eye", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+        s.limb([(hx, 2.5 + b), (hx + 3, -0.5 + b)], 0.35, "leg", r_end=0.3)
+        for i, bx in enumerate((10.5, 13)):
+            group = i % 2
+            lift = tri_lift(f, group)
+            reach = tri_reach(f, group)
+            s.limb([(bx, 15 + b), (bx - 2.5 + reach, 12 + b + lift * 0.6), (bx - 3.5 + reach * 1.5, 22 + lift)], 0.6, "leg", r_end=0.4)
+
+
+DESIGNS = {"beetle": beetle, "moth": moth, "spider": spider, "centipede": centipede, "tick": tick,
+           "scarab": scarab, "wasp": wasp, "mantis": mantis}
+FLIERS = {"moth", "wasp"}
