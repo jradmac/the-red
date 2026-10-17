@@ -80,6 +80,12 @@ func _place() -> void:
 		for k in n:
 			var st := Items.roll_stack(_rng, progress)
 			add_to_chest(items, st.id, st)
+		# Now and then, deep down, something legendary (its own dice, so the rest
+		# of the labyrinth comes out the same either way).
+		var lr := RandomNumberGenerator.new()
+		lr.seed = hash([world.seed_value, c, "legendary"])
+		if lr.randf() < Items.legendary_chest_chance(progress) and items.size() < ChestScreen.CAPACITY:
+			items.append({"id": Items.legendary_pick(lr), "qty": 1})
 		# Rubies: more of them, and bigger handfuls, deeper in.
 		if _rng.randf() < RUBY_CHANCE + progress * 0.2 and items.size() < ChestScreen.CAPACITY:
 			items.append({"id": "ruby", "qty": _rng.randi_range(1, 3) + int(round(progress * RUBY_DEPTH_BONUS))})
