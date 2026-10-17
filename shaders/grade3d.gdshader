@@ -1,21 +1,13 @@
 // The finishing pass over the 3D picture (View3D's screen): lights bloom,
 // the dark keeps a deep indigo instead of going flat black, and colour is
 // lifted in the half-lights so a lantern's amber and a flare's green read
-// rich. Everything stays on whole pixels: the glow is cut into steps and
-// dithered, like the light itself (light3d.gdshaderinc).
+// rich. The glow is smooth, so the picture stays clean.
 shader_type canvas_item;
 
 uniform float night = 1.0;        // 1 = deep night .. 0 = full day
 uniform float bloom = 0.6;
 uniform vec3 deep : source_color = vec3(0.045, 0.03, 0.1);   // what darkness is made of
 uniform float vignette = 0.35;
-
-const float BAYER[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
-
-float bayer4(vec2 p) {
-	ivec2 i = ivec2(mod(floor(p), 4.0));
-	return (BAYER[i.x + i.y * 4] + 0.5) / 16.0;
-}
 
 vec3 bright(vec3 s) {
 	float l = max(s.r, max(s.g, s.b));
@@ -35,12 +27,7 @@ void fragment() {
 		b += bright(texture(TEXTURE, UV + d * 6.5 * px).rgb) * 0.2;
 	}
 	b /= 8.0;
-	// in steps, dithered: a pixel glow, not a blur
-	float bl = max(b.r, max(b.g, b.b));
-	float steps = 4.0;
-	float f = bl * steps * 1.6;
-	float q = (floor(f) + step(bayer4(FRAGCOORD.xy), fract(f))) / steps;
-	c += b / max(bl, 1e-4) * q * bloom * mix(0.25, 1.0, night);
+	c += b * 1.6 * bloom * mix(0.25, 1.0, night);
 	// the dark: deep indigo, warmest right next to the light
 	float lum = dot(c, vec3(0.3, 0.59, 0.11));
 	c += deep * pow(1.0 - clamp(lum * 4.0, 0.0, 1.0), 2.0) * night;

@@ -84,6 +84,9 @@ static func set_enabled(on: bool) -> void:
 
 func setup(m: Node) -> void:
 	main = m
+	# keep following the hero while the game is paused (the intro pauses it,
+	# so do the menus) -- the 2D lighting does the same
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	world = m.world
 	_add_view()
 	vp = _views[0].vp
@@ -404,7 +407,7 @@ static func flame(hue: Color, k: float) -> Color:
 	var h := Vector3(hue.r, hue.g, hue.b) / maxf(m, 0.0001)
 	var edge := Vector3(pow(h.x, 1.9), pow(h.y, 1.9), pow(h.z, 1.9))
 	edge /= maxf(edge.x, maxf(edge.y, edge.z))
-	var heart := h.lerp(Vector3(1.0, 0.97, 0.9), 0.42)
+	var heart := h.lerp(Vector3(1.0, 0.97, 0.9), 0.3)
 	var t := smoothstep(0.3, 1.0, k)
 	var v := edge.lerp(heart, t)
 	return Color(v.x, v.y, v.z)
@@ -519,7 +522,7 @@ func _place_light(l: OmniLight3D, s: Dictionary, k: float, reach := 1.45) -> voi
 	l.omni_range = maxf(r / World.TILE * reach, 0.1)
 	# by day the sun outshines them: lamps and candles fade back
 	var dl: float = main.day.light if main.day != null else 0.0
-	l.light_energy = s.energy * 1.6 * k * (1.0 - 0.92 * dl)
+	l.light_energy = s.energy * 1.35 * k * (1.0 - 0.92 * dl)
 	l.light_color = s.color
 	l.visible = s.energy > 0.01 and r > 1.0
 
