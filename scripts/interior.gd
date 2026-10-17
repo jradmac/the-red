@@ -9,6 +9,9 @@ extends CanvasLayer
 ##
 ## One per player (it sits in that player's half of the screen in two-player
 ## mode). If your partner is in the same building, you see them too.
+##
+## With the 3D world on, the room is shown in 3D (interior3d.gd): the same
+## layout, built as a real room under the same light as the labyrinth.
 
 var pfx := ""   ## input action prefix: "" for player 1, "p2_" for player 2
 
@@ -115,6 +118,7 @@ var _time := 0.0
 var _rng := RandomNumberGenerator.new()
 var _home_talks := 0
 var _busy_frame := -10
+var _3d: Interior3D           ## the room in 3D (when the 3D world is on)
 
 
 func setup(h: Hero, v: Villages, menu: VillageScreen) -> void:
@@ -123,6 +127,10 @@ func setup(h: Hero, v: Villages, menu: VillageScreen) -> void:
 	screen_menu = menu
 	layer = 4
 	visible = false
+	_3d = Interior3D.new()
+	add_child(_3d)
+	_3d.setup(self)
+	add_child(_3d.screen)   # (under the canvas: titles and fades go on top)
 	_canvas = Node2D.new()
 	_canvas.draw.connect(_draw_room)
 	add_child(_canvas)
@@ -167,6 +175,8 @@ func enter(village: int, b: Dictionary) -> void:
 			_people.append({"cell": c, "look": (_rng.randi() % Villages.VILLAGER_LOOKS) if k == 0 else Villages.CHILD_LOOKS[_rng.randi() % 2],
 				"dir": 0, "keeper": false, "child": k > 0, "pos": Vector2(c * TILE), "from": Vector2(c * TILE), "t": 1.0,
 				"wait": _rng.randf_range(0.5, 2.0)})
+	if Interior3D.wanted():
+		_3d.build(room, kind)
 	hero.player.ui_lock = "interior"
 	visible = true
 	_phase = "enter_out"
@@ -213,6 +223,10 @@ func _process(delta: float) -> void:
 		return
 	_time += delta
 	_canvas.queue_redraw()
+	var three := Interior3D.wanted() and _phase in ["enter_in", "inside", "exit_out"]
+	_3d.set_shown(three)
+	if three:
+		_3d.update(delta, _canvas.get_viewport_rect().size)
 	match _phase:
 		"enter_out":
 			_fade_t += delta
@@ -236,6 +250,7 @@ func _process(delta: float) -> void:
 			if _fade_t >= FADE:
 				active = false
 				visible = false
+				_3d.set_shown(false)
 				hero.player.ui_lock = ""
 			return
 	for p in _people:
@@ -380,8 +395,11 @@ func _draw_room() -> void:
 		"exit_in": fade = 1.0 - _fade_t / FADE
 	var show_room := _phase in ["enter_in", "inside", "exit_out"]
 	if show_room:
-		_canvas.draw_rect(Rect2(Vector2.ZERO, screen), Color("06040a"))
-		_draw_inside()
+		if Interior3D.wanted():
+			_draw_overlay()   # (the room itself is the 3D picture under this canvas)
+		else:
+			_canvas.draw_rect(Rect2(Vector2.ZERO, screen), Color("06040a"))
+			_draw_inside()
 	if fade > 0.0:
 		_canvas.draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, clampf(fade, 0.0, 1.0)))
 
@@ -451,7 +469,12 @@ func _draw_inside() -> void:
 			3:
 				var oh: Hero = it[2]
 				_draw_hero(oh, o + oh.interior._pos.round(), oh.interior.facing, oh.interior._move_t, oh.interior._step)
-	# a little bar at the top: where you are, your hearts and rubies
+	_draw_overlay()
+
+
+## A little bar at the top (where you are, your hearts and rubies) and the
+## hint by the door.
+func _draw_overlay() -> void:
 	var title: String = {"shop": "THE SHOP", "sage": "THE SAGE'S HUT", "inn": "THE INN"}.get(kind, "A HOME")
 	var screen := _canvas.get_viewport_rect().size
 	PixelFont.draw(_canvas, Vector2(floorf((screen.x - PixelFont.width_of(title)) / 2.0), 4), title, Color("ffd38a"))
