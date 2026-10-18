@@ -15,6 +15,14 @@ texture pixel per screen pixel), so the detail comes from craft, not size:
 
 Frames are 80 x 80; the pivot is the bottom middle (40, 79).
 
+Seen from above (like the hero, make_hero_tilt.py): the 3D view looks down on
+the labyrinth, so each pose is drawn for that camera rather than at eye level --
+WARP squeezes the pose's heights the way the camera foreshortens them (standing:
+legs most, the torso less, the head not at all; crawling and lunging: evenly,
+so you see along its back), the face sits lower on the head so the crown shows,
+and the light comes from above. The shapes and anatomy are untouched. Set
+LONGMAN_FLAT=1 for the old eye-level drawing.
+
     python3 tools/make_longman.py assets   (writes assets/longman.png)
 """
 import math
@@ -57,7 +65,8 @@ GLASS = hexc("2c3a42")
 GLASS_HI = hexc("8fa6ab")
 RUST = hexc("6b3a2a")
 
-L = (-0.72, -0.52, 0.46)
+FLAT = bool(os.environ.get("LONGMAN_FLAT"))
+L = (-0.72, -0.52, 0.46) if FLAT else (-0.5, -0.76, 0.42)   # (seen from above: lit from above)
 _n = math.sqrt(sum(c * c for c in L))
 L = tuple(c / _n for c in L)
 LXY = (L[0], L[1])
@@ -88,6 +97,36 @@ def lit_side(a, b):
     if p[0] * LXY[0] + p[1] * LXY[1] < 0:
         p = (-p[0], -p[1])
     return p
+
+
+# --- The camera: how each pose's heights are foreshortened seen from above --------------
+GROUND_Y = 78.0
+WARP = None   # set per frame in main(): y -> y on screen (None = as drawn)
+
+
+def warp_upright(y):
+    """Standing: the legs shortened most, the torso less, the head and neck kept."""
+    h = GROUND_Y - y
+    hip, sho = 30.0, 53.0
+    if h <= hip:
+        h2 = h * 0.66
+    elif h <= sho:
+        h2 = hip * 0.66 + (h - hip) * 0.86
+    else:
+        h2 = hip * 0.66 + (sho - hip) * 0.86 + (h - sho)
+    return GROUND_Y - h2
+
+
+def warp_low(y):
+    """On all fours, lunging, perched: squeezed evenly -- you see along its back."""
+    return GROUND_Y - (GROUND_Y - y) * 0.84
+
+
+def _wy(y):
+    return y if WARP is None else WARP(y)
+
+
+UPRIGHT_LOOK = 0.0 if FLAT else -1.7   # the face lower on the head: you see the crown
 
 
 class Frame:
@@ -150,6 +189,8 @@ class Frame:
         cells = {}
         for s in shapes:
             cells.update(s)
+        if WARP is not None:
+            cells = {(x, int(math.floor(_wy(y + 0.5)))): v for (x, y), v in cells.items()}
         cells = {c: v for c, v in cells.items() if self.inside(c)}
         if outline:
             for (x, y), v in cells.items():
@@ -177,7 +218,7 @@ class Frame:
         return set(cells)
 
     def put(self, c, col, only=None):
-        c = (int(round(c[0])), int(round(c[1])))
+        c = (int(round(c[0])), int(round(_wy(c[1]))))
         if not self.inside(c) or (only is not None and c not in only):
             return
         self.px[c] = col
@@ -490,7 +531,7 @@ def upright(step=0, lift=0, sway=0.0, tilt=0.0, twitch=0, breath=0.0, swing=0.0)
         wrists[s] = wri
     # the dead lantern, hanging off the outside of its left hand (our left)
     lantern(f, (wrists[-1][0] - 1.5, wrists[-1][1] + 0.5), drop=3.5, swing=-2.6 + swing * 0.6)
-    face_front(f, (cx + tilt * 0.12 + tilt * 0.06, 12.5 + abs(tilt) * 0.035), tilt=tilt, swing=swing)
+    face_front(f, (cx + tilt * 0.12 + tilt * 0.06, 12.5 + abs(tilt) * 0.035), tilt=tilt, swing=swing, look=UPRIGHT_LOOK)
     return f
 
 
@@ -762,8 +803,16 @@ FIT = ("side", "perch", "lunge", "drop", "crawl")
 def main(out):
     os.makedirs(out, exist_ok=True)
     sheet = Image.new("RGBA", (FW * len(FRAMES), FH), (0, 0, 0, 0))
+    global WARP
     for i, (name, fn) in enumerate(FRAMES):
+        WARP = None
+        if not FLAT:
+            if name.startswith(("idle", "breathe", "tilt", "walk")):
+                WARP = warp_upright
+            elif name.startswith(("crawl", "lunge", "drop", "perch", "toward", "side")):
+                WARP = warp_low
         f = fn()
+        WARP = None
         if name.startswith(FIT):
             fit(f)
         grime(f)

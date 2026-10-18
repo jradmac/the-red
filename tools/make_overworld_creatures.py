@@ -4,7 +4,8 @@ and overworld_demons.py).
 
     columns   one per insect, 24 px, same order as CreatureData / insects.png
     rows      facing x frame: down 0-3, side 4-7, up 8-11 (24 px each)
-    demons    the same layout in 24 x 32 cells, same order as demons.png
+    demons    the same layout in 24 x 32 cells, same order as demons.png -- drawn
+              seen from above for the 3D camera (overworld_tilt.py)
 
 Insects whose design isn't drawn yet are left empty (the game falls back to
 their old sprite). Run:  python3 tools/make_overworld_creatures.py
@@ -18,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from make_battle_sprites import INSECTS, DEMONS  # noqa: E402  (names, designs, palettes)
 import overworld_creatures as oc        # noqa: E402
 import overworld_demons as od           # noqa: E402
+import overworld_tilt as tilt           # noqa: E402  (the demons, seen from above)
 from pixkit import Sprite               # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -44,8 +46,10 @@ def main():
         for fi, facing in enumerate(FACINGS):
             for f in range(FRAMES):
                 s = Sprite(24, 32)
-                od.DESIGNS[design](s, facing, f, opts)
-                sheet.paste(s.image(pal), (i * 24, (fi * FRAMES + f) * 32))
+                with tilt.top_light():     # drawn for the camera, from above (overworld_tilt.py)
+                    od.DESIGNS[design](tilt.TiltSprite(s, design), facing, f, opts)
+                    img = s.image(pal)
+                sheet.paste(img, (i * 24, (fi * FRAMES + f) * 32))
     sheet.save(ROOT / "assets" / "demons_walk.png")
     print("wrote assets/demons_walk.png")
 
