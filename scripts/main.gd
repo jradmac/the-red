@@ -942,7 +942,8 @@ func _tick_longmen(delta: float) -> void:
 			lm.tick(delta, false, false, daytime, true)
 			continue
 		enemies.bind(h)
-		var frozen: bool = h.player.ui_lock not in ["", "encounter"] or h.battle.is_active()
+		# (bent over a lock you aren't safe: it keeps coming -- see lock_puzzle.gd)
+		var frozen: bool = h.player.ui_lock not in ["", "encounter", "lock"] or h.battle.is_active()
 		# Light protects whoever stands in it: your lantern, your partner's lantern,
 		# anyone's flare, a candle or glowing mushroom.
 		var own_dark := enemies.in_the_dark()
@@ -956,6 +957,20 @@ func _tick_longmen(delta: float) -> void:
 		if view3d != null and view3d.coop_centers.size() == Hero.all.size() and Hero.all.size() > 1:
 			lm.view_center = (view3d.coop_centers[i] as Vector2) / World.TILE
 		lm.tick(delta, dark, enemies._gathering(), daytime, frozen)
+		_longman_at_lock(h, lm)
+
+
+## Picking a lock in the dark: the lock screen's heartbeat follows the Wolf Man,
+## and when it lunges the lock drops away so you see it take you.
+func _longman_at_lock(h: Hero, lm: Longman) -> void:
+	var lp: LockPuzzle = h.lock_puzzle
+	if lp == null or not lp.visible:
+		return
+	lp.danger = 0.0
+	if lm.state in ["drop", "approach", "lunge"]:
+		lp.danger = clampf(1.0 - lm.distance() / 8.0, 0.15, 1.0)
+	if lm.state in ["lunge", "feeding"]:
+		lp.interrupt()
 
 
 ## Two players: standing in your partner's lantern light keeps you safe too

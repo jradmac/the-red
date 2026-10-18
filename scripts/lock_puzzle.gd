@@ -16,6 +16,12 @@ extends CanvasLayer
 ## and past halfway they stop moving evenly (ERRATIC). Roughly how long a pin
 ## sits in the window: bronze ~200 ms at the start, gold ~70 ms at the bottom.
 ## B (X) gives up and keeps your key.
+##
+## Bent over a lock you aren't safe. If the flame dies (and no flare or other
+## light is near), the lock goes dark -- you're picking blind -- and the Wolf Man
+## comes as it would anywhere (main.gd keeps it moving while the lock is up).
+## Strike a match (E) right here to relight and carry on, or run (X). If it
+## reaches you, main.gd calls interrupt(): the lock drops away and you see it take you.
 
 var pfx := ""   ## input action prefix: "" for player 1, "p2_" for player 2
 
@@ -73,6 +79,9 @@ var _sparks: Array = []          # {p, v, t, col}
 ## flare, your partner's lantern, a candle)? Enough to see the pins by.
 var other_light: Callable
 var _popups: Array = []          # {text, p, t, col}
+## Set every frame by main.gd: how close the Wolf Man is (0 far or not coming .. 1 on you).
+var danger := 0.0
+var _blind_t := 0.0              # how long you've been picking in the dark
 
 
 func setup(p: Player, l: Lantern) -> void:
@@ -109,6 +118,8 @@ func start(color: String, on_done: Callable, depth: float = 0.0) -> void:
 	_lost_t = 0.0
 	_sparks.clear()
 	_popups.clear()
+	_blind_t = 0.0
+	danger = 0.0
 	visible = true
 	player.ui_lock = "lock"
 	_opened_frame = Engine.get_process_frames()
@@ -120,6 +131,18 @@ func _end(success: bool) -> void:
 	player.ui_lock = ""
 	if _callback.is_valid():
 		_callback.call(success)
+
+
+## The Wolf Man has you: drop the lock (the key stays in your bag) so the
+## screen shows what happens next.
+func interrupt() -> void:
+	if visible:
+		_end(false)
+
+
+## Picking in the dark: no light of your own and none nearby.
+func _blind() -> bool:
+	return not _can_see()
 
 
 func _tolerance() -> float:
@@ -172,17 +195,21 @@ func _process(delta: float) -> void:
 	if _done_t < 0.0 and _current < _pins.size():
 		_pick_x = lerpf(_pick_x, _channel(_current).get_center().x, minf(delta * 14.0, 1.0))
 	_canvas.queue_redraw()
-	if not _can_see():
-		_end(false)   # the light died and there's no other -- go strike a match!
-		return
+	if _blind():
+		# the light died and there's no other: you can't see the pins, and it's coming
+		_blind_t += delta
+		if Engine.get_process_frames() != _opened_frame and Input.is_action_just_pressed(pfx + "match"):
+			lantern.strike()   # relight right here, and carry on
+	else:
+		_blind_t = 0.0
 	# bent over the lock, the flame burns fast
 	if _burning() and _done_t < 0.0:
 		lantern.fuel = maxf(lantern.fuel - (PICK_DRAIN + PICK_DRAIN_DEEP * _depth) * delta, 0.0)
 	# your heart, when the light's nearly gone
-	if _burning() and lantern.fraction() < LOW:
+	if (_burning() and lantern.fraction() < LOW) or _blind():
 		_beat -= delta
 		if _beat <= 0.0:
-			_beat = lerpf(0.45, 0.9, lantern.fraction() / LOW)
+			_beat = lerpf(0.45, 0.9, lantern.fraction() / LOW) if not _blind() else lerpf(0.5, 0.22, danger)
 			Sfx.play("heartbeat", 0.0, 0.0)
 	if _done_t >= 0.0:
 		_done_t += delta
@@ -298,10 +325,23 @@ func _draw_lock() -> void:
 	for s in _sparks:
 		var a: float = 1.0 - s.t / 0.5
 		_canvas.draw_rect(Rect2((s.p as Vector2).round(), Vector2(1, 1)), Color(s.col, a))
-	var msg := "CLICK!" if _done_t >= 0.0 else ("MISSED!" if _miss_flash > 0.0 else "Z SET PIN   X GIVE UP")
-	var col := C_SET if _done_t >= 0.0 else (C_MISS if _miss_flash > 0.0 else C_DIM)
+	var blind := _blind() and _done_t < 0.0
+	if blind:
+		# the dark swallows the lock: only the faintest shape of it, and the pick in your hand
+		_canvas.draw_rect(PANEL.grow(2), Color(0.01, 0.0, 0.02, 0.94))
+		var t2 := "THE LIGHT IS OUT"
+		PixelFont.draw(_canvas, Vector2(PANEL.position.x + (PANEL.size.x - PixelFont.width_of(t2)) / 2, PANEL.position.y + 30), t2,
+			Color(C_MISS, 0.7 + 0.3 * sin(_t * 6.0)))
+		var t3 := "YOU CAN'T SEE THE PINS"
+		PixelFont.draw(_canvas, Vector2(PANEL.position.x + (PANEL.size.x - PixelFont.width_of(t3)) / 2, PANEL.position.y + 44), t3, C_DIM)
+	var msg := "CLICK!" if _done_t >= 0.0 else ("MISSED!" if _miss_flash > 0.0 else ("E STRIKE A MATCH   X RUN" if blind else "Z SET PIN   X GIVE UP"))
+	var col := C_SET if _done_t >= 0.0 else (C_MISS if _miss_flash > 0.0 else (C_TEXT if blind else C_DIM))
 	PixelFont.draw(_canvas, Vector2(PANEL.position.x + (PANEL.size.x - PixelFont.width_of(msg)) / 2, PANEL.end.y - 11), msg, col)
 	_canvas.draw_set_transform(Vector2.ZERO)
+	if blind and danger > 0.0:
+		# it's close: the dark pulses red with your heartbeat
+		var beat := 0.5 + 0.5 * sin(_t * lerpf(8.0, 22.0, danger))
+		_canvas.draw_rect(Rect2(-offset, full), Color(0.5, 0.0, 0.06, danger * 0.28 * beat))
 	if _miss_flash > 0.0:
 		_canvas.draw_rect(Rect2(-offset, full), Color(0.6, 0.0, 0.08, _miss_flash * 0.5))
 	_draw_vignette(full, seen)
