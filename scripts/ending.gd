@@ -51,7 +51,7 @@ func _draw_end() -> void:
 		return
 	var a := clampf((_t - 1.6) / 1.0, 0.0, 1.0)
 	_centered(30, "THE MASTER SEAL SHATTERS", Color(C_PURPLE, a))
-	_centered(44, "YOU ESCAPED THE LABYRINTH", Color(C_TEXT, a))
+	_centered(44, "THE GATE OPENS ON DAYLIGHT. THE ROAD HOME.", Color(C_TEXT, a))
 	if _t < 2.8:
 		return
 	var b := clampf((_t - 2.8) / 1.0, 0.0, 1.0)

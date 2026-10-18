@@ -12,15 +12,15 @@ extends RefCounted
 
 const ITEMS_TEX: Texture2D = preload("res://assets/items.png")
 const PROPS_TEX: Texture2D = preload("res://assets/props.png")
-const DOORS_TEX: Texture2D = preload("res://assets/doors.png")
-const MASTER_TEX: Texture2D = preload("res://assets/master.png")
 const INSECTS_TEX: Texture2D = preload("res://assets/insects.png")
 const DEMONS_TEX: Texture2D = preload("res://assets/demons.png")
 const LONGMAN_TEX: Texture2D = preload("res://assets/longman.png")   # the Wolf Man
-const CLOSEUP_TEX: Texture2D = preload("res://assets/wolfman_closeup.png")   # 4 x (160 x 128): two poses, two glints
 const INSECTS_BIG: Texture2D = preload("res://assets/insects_battle.png")   # 64 x 64 frames, as in battle
 const DEMONS_BIG: Texture2D = preload("res://assets/demons_battle.png")     # 64 x 96 frames
 const BAG_TEX: Texture2D = preload("res://assets/bag_icon.png")
+## The lantern pictures share a layout: the lantern hangs at SHELF_Y, captions sit on LABEL_Y.
+const SHELF_Y := 62.0
+const LABEL_Y := 124.0
 const BIG_CARD := Vector2(92, 50)          # the battle's move cards
 const C_ATTACK := Color("ff7a4a")
 const C_DEFEND := Color("6aa8ff")
@@ -33,14 +33,8 @@ const C_RED := Color("ff8a9a")
 const LANTERN := Color(1.0, 0.72, 0.42)
 const GREEN := Color(0.45, 1.0, 0.6)
 const PURPLE := Color("a060ff")
-const STONE := Color("3a3448")
 const STONE_DK := Color("221d2e")
-const STONE_HI := Color("4a4458")
 const KEY_COLORS := {"bronze": Color("c07a3a"), "silver": Color("c9cbd8"), "gold": Color("e8b84a")}
-const DOOR_COLUMN := {"bronze": 0, "silver": 2, "gold": 4}   # columns in doors.png
-const DOOR_OPEN := 6
-const CHEST_CLOSED := 8   # columns in props.png
-const CHEST_OPEN := 9
 const FLARE := 5
 const MOVE_COLORS := {"attack": Color("e0503c"), "defend": Color("4a8ad8"), "dodge": Color("4ac87a"), "item": Color("e8b84a")}
 
@@ -106,16 +100,18 @@ static func _lantern_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> voi
 	var fuel := lerpf(1.0, 0.3, _k(lt, 0.3, 5.4))
 	if lt > 5.4:
 		fuel = lerpf(0.3, 1.0, _ease(_k(lt, 5.4, 5.9)))
-	var lp := Vector2(cx + roundf(sin(t * 1.4) * 2.0), a.position.y + 70)
+	var lp := Vector2(cx + roundf(sin(t * 1.4) * 2.0), a.position.y + SHELF_Y)
 	_lantern(c, lp, Vector2(cx, a.position.y), fuel, t, 1.0)
-	_fuel_bar(c, Vector2(cx, a.end.y - 16), fuel)
+	_fuel_bar(c, Vector2(cx, a.position.y + LABEL_Y), fuel)
 
 
-## Strike a match on the box, feed it to the lantern: the light swells.
+## Strike a match on the box, feed it to the lantern: the light swells. The
+## lantern and the matchbox stand either side of the middle, each with its
+## caption on the same line beneath it.
 static func _match_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
-	var lp := Vector2(cx - 56, a.position.y + 70)
-	var box := Vector2(cx + 70, a.position.y + 96)
+	var lp := Vector2(cx - 64, a.position.y + SHELF_Y)
+	var bc := Vector2(cx + 64, a.position.y + SHELF_Y + 8)       # the matchbox, resting at the lantern's foot line
 	var fuel := 0.15
 	if lt >= 1.55:
 		fuel = lerpf(0.15, 0.45, _ease(_k(lt, 1.55, 2.0)))
@@ -125,46 +121,51 @@ static func _match_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	if lt >= 1.55:
 		boost = 22.0 * (1.0 - _k(lt, 1.55, 2.4))
 	_lantern(c, lp, Vector2(lp.x, a.position.y), fuel, t, 1.0, boost)
-	_fuel_bar(c, Vector2(lp.x, a.end.y - 16), fuel)
-	# the matchbox and its key
-	_icon(c, "matches", box, 3)
-	_key(c, box + Vector2(0, 32), "E", "STRIKE A MATCH")
-	# the match: rises over the box, swipes down its side, catches, flies to the lantern
-	var head := box + Vector2(-26, -50)
+	_fuel_bar(c, Vector2(lp.x, a.position.y + LABEL_Y), fuel)
+	# the matchbox, lit a little from the lantern's side, its shadow on the shelf
+	var lit := 0.55 + 0.45 * clampf(fuel * 1.6 + boost / 30.0, 0.0, 1.0)
+	c.draw_rect(Rect2(bc.x - 22, bc.y + 14, 44, 1), Color(0, 0, 0, 0.5))
+	_art(c, "matchbox", bc, Color(lit, lit * 0.95, lit * 0.9))
+	_key_line(c, Vector2(bc.x, a.position.y + LABEL_Y + 2), "E", "STRIKE A MATCH")
+	# the match: out of the drawer, down the striker on the box's end, alight, over to the lantern
+	var striker := bc + Vector2(14, -2)
+	var head := bc + Vector2(-21, -30)
 	var alpha := _k(lt, 0.0, 0.3)
+	if lt >= 0.25:
+		head = head.lerp(striker + Vector2(0, -16), _ease(_k(lt, 0.25, 0.5)))
 	if lt >= 0.5:
-		head = head.lerp(box + Vector2(-26, -16), _ease_in(_k(lt, 0.5, 0.75)))
-	if lt >= 0.75:
-		head = (box + Vector2(-26, -16)).lerp(box + Vector2(-34, -40), _ease(_k(lt, 0.75, 0.95)))
+		head = (striker + Vector2(0, -16)).lerp(striker + Vector2(0, 6), _ease_in(_k(lt, 0.5, 0.72)))
+	if lt >= 0.72:
+		head = (striker + Vector2(0, 6)).lerp(striker + Vector2(-6, -22), _ease(_k(lt, 0.72, 0.95)))
 	if lt >= 0.95:
 		var k := _ease(_k(lt, 0.95, 1.55))
-		head = (box + Vector2(-34, -40)).lerp(lp + Vector2(22, -2), k)
+		head = (striker + Vector2(-6, -22)).lerp(lp + Vector2(10, -6), k)
 		head.y -= sin(k * PI) * 26.0
 	if lt >= 2.0:
 		var k2 := _ease(_k(lt, 2.0, 2.6))
-		head = (lp + Vector2(22, -2)).lerp(lp + Vector2(52, -18), k2)
+		head = (lp + Vector2(10, -6)).lerp(lp + Vector2(44, -26), k2)
 		alpha = 1.0 - k2
-	var lit := lt >= 0.72
+	var burning := lt >= 0.72
 	var flame := 1.0 - _k(lt, 2.0, 2.45)
 	if lt < 2.6:
-		_match(c, head.round(), lit, flame, alpha, t)
+		_match(c, head.round(), burning, flame, alpha, t, lt >= 2.0)
 	# sparks off the striker
 	if lt >= 0.72 and lt < 1.05:
 		var sk := _k(lt, 0.72, 1.05)
-		var at := box + Vector2(-26, -16)
-		for i in 7:
-			var ang := -PI * 0.15 - i * 0.42
-			var p := at + Vector2(cos(ang), sin(ang)) * (4.0 + sk * 16.0)
+		for i in 8:
+			var ang := -PI * 0.1 - i * 0.38
+			var p := striker + Vector2(0, 4) + Vector2(cos(ang), sin(ang)) * (3.0 + sk * 15.0)
 			c.draw_rect(Rect2(p.round(), Vector2(1, 1)), Color(1.0, 0.85, 0.4, 1.0 - sk))
 
 
-## The Longman waits at the edge of the light. Let it die and it comes.
+## The Wolf Man at the edge of your light. While the lantern burns he only
+## stands there, half of him caught by it and the rest lost in the dark. The
+## flame dies: nothing -- only the pale point in the hole where his face
+## should be, coming closer. A match flares and there he is, right in front
+## of you, lit full; he shrinks back to the edge.
 static func _ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
-	# The Wolf Man, up close. A face at the very edge of your light, barely
-	# there; the flame dies and in the dark it is suddenly all you can see;
-	# a match flares and it draws back.
 	var cx := a.get_center().x
-	var lp := Vector2(cx - 70, a.position.y + 74)
+	var lp := Vector2(cx - 104, a.position.y + SHELF_Y - 6)
 	var fuel := 0.6
 	var dark := false
 	if lt >= 3.3 and lt < 3.7:
@@ -174,61 +175,43 @@ static func _ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void
 		dark = true
 	var boost := 0.0
 	if lt >= 4.6:
-		boost = 26.0 * (1.0 - _k(lt, 4.6, 5.2))
-	# where the face is and how big: waiting at the edge, then right on you
-	var far := Vector2(cx + 82, a.position.y + 70)
-	var near := Vector2(cx + 10, a.position.y + 78)
-	var sc := 1.0
-	var at := far
-	var pose := 0
-	if lt >= 3.7 and lt < 4.6:
-		var k := _ease_in(_k(lt, 3.7, 4.3))
-		at = far.lerp(near, k)
-		sc = lerpf(1.0, 2.0, k)
+		boost = 30.0 * (1.0 - _k(lt, 4.6, 5.3))
+	var far := cx + 64.0
+	var near := cx - 22.0
+	var x := far
+	var pose := 1 if fmod(t, 3.1) > 2.4 else 0     # now and then the head tilts and the hand lifts
+	var light := 0.62 + 0.3 * fuel                 # how brightly the lantern catches him
+	var body := 1.0                                # how much of him there is to see
+	if lt >= 3.3 and lt < 3.7:
+		light *= fuel / 0.6
+	if dark:
+		x = lerpf(far, near, _ease_in(_k(lt, 3.75, 4.5)))
+		body = 0.07
 		pose = 1
 	elif lt >= 4.6:
-		var k2 := 1.0 - _ease(_k(lt, 4.62, 5.4))
-		at = far.lerp(near, k2)
-		sc = lerpf(1.0, 2.0, k2)
-		pose = 1 if k2 > 0.5 else 0
-	else:
-		pose = 1 if fmod(t, 3.1) > 2.6 else 0          # now and then the head tilts
-	# how much of it the light shows
-	var r := (16.0 + 50.0 * fuel) + boost if fuel > 0.0 else 0.0
-	var seen := clampf(1.0 - (absf(at.x - lp.x) - r) / 70.0, 0.0, 1.0)
-	var col := Color(0.32, 0.29, 0.4).lerp(Color(1.0, 0.94, 0.86), seen)
-	if dark:
-		col = Color(0.62, 0.58, 0.7)   # pale in the dark: it is all you can see
+		var back := _ease(_k(lt, 4.75, 5.6))
+		x = lerpf(near, far, back)
+		pose = 4 if lt < 4.95 else 1
+		light = lerpf(1.1, 0.8, back)
 	var breathe := roundf(sin(t * 1.7) * 1.0)
-	if dark and lt < 4.3:
-		breathe += roundf(sin(t * 60.0) * 1.0)   # it lunges
-	_closeup(c, at + Vector2(0, breathe), sc, pose, col, a)
-	# in the dark, the glint deep in the hole burns
-	if dark or lt < 3.3:
-		var ga := 1.0 if dark else 0.35 + 0.25 * sin(t * 2.3)
-		_closeup(c, at + Vector2(0, breathe), sc, pose + 2, Color(1.0, 0.97, 0.85, ga), a)
+	var top := Vector2(roundf(x - IntroArt.WOLF_SIZE.x / 2.0), a.position.y + breathe)
+	if body > 0.0:
+		_wolf(c, top, pose, Color(light, light * 0.97, light * 1.04, body), a)
+	# the pinprick deep in the hole: faint while you can see him, burning in the dark
+	var ga := 1.0 if dark else (0.3 + 0.2 * sin(t * 2.3) if lt < 3.7 else 0.0)
+	if ga > 0.0:
+		var gp := 3 if pose != 0 else 2
+		_wolf(c, top, gp, Color(1.0, 0.97, 0.85, ga), a)
+		if dark:
+			_glow(c, top + _wolf_eye(pose), 6.0, Color(1.0, 0.95, 0.8), 0.6)
 	_lantern(c, lp, Vector2(lp.x, a.position.y), fuel, t, 1.0, boost)
 	if lt >= 4.6 and lt < 5.0:
 		var fk := _k(lt, 4.6, 5.0)
-		c.draw_circle(lp, 34.0 * (1.0 - fk) + 8.0, Color(1.0, 0.9, 0.7, 0.45 * (1.0 - fk)))
+		c.draw_circle(lp, 40.0 * (1.0 - fk) + 8.0, Color(1.0, 0.9, 0.7, 0.4 * (1.0 - fk)))
 	if dark:
 		_text_c(c, cx, a.end.y - 12, "THE LIGHT IS OUT", C_RED)
 	else:
 		_text_c(c, cx, a.end.y - 12, "SAFE INSIDE THE LIGHT", C_DIM)
-
-
-## The close-up portrait (frame 0/1: the face, 2/3: its glint) centred on
-## `center`, at an integer `scale` steps of 1 or 2 (in between it snaps), cut
-## off at the edges of the stage `a`.
-static func _closeup(c: CanvasItem, center: Vector2, scale: float, frame: int, col: Color, a: Rect2) -> void:
-	var s := 2.0 if scale >= 1.5 else 1.0
-	var size := Vector2(160, 128) * s
-	var dst := Rect2((center - size / 2.0).round(), size)
-	var clip := dst.intersection(a)
-	if clip.size.x <= 0.0 or clip.size.y <= 0.0:
-		return
-	var src := Rect2(Vector2(frame * 160, 0) + (clip.position - dst.position) / s, clip.size / s)
-	c.draw_texture_rect_region(CLOSEUP_TEX, clip, src, col)
 
 
 # --- 2. Flares and the map ----------------------------------------------------
@@ -337,49 +320,49 @@ static func _flare_ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -
 
 # --- 3. Gates and keys --------------------------------------------------------
 
-## A locked gate in a stone wall, rattling.
+## A locked gate set in a stone wall, rattling when you try it.
 static func _gate_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
-	var base := a.position.y + 126
-	_wall(c, Rect2(cx - 110, base - 104, 220, 104), STONE)
-	_glow(c, Vector2(cx, base - 30), 80.0, LANTERN, 0.45)
+	var base := a.position.y + 130
+	_glow(c, Vector2(cx, base - 40), 96.0, LANTERN, 0.5)
+	_art_feet(c, "wall", Vector2(cx, base + 1))
 	var shake := roundf(sin(lt * 90.0)) if lt > 0.3 and lt < 0.6 else 0.0
-	var dst := Rect2(cx - 32 + shake, base - 96, 64, 96)
-	c.draw_texture_rect_region(DOORS_TEX, dst, Rect2(DOOR_COLUMN.bronze * 16, 0, 16, 24))
+	_art_feet(c, "gate_bronze", Vector2(cx + shake, base))
 	if fmod(t, 1.6) < 0.8:
-		_twinkle(c, Vector2(cx + 2 + shake, base - 50), C_GOLD, 1.0 - fmod(t, 1.6) / 0.8)
-	c.draw_rect(Rect2(cx - 110, base, 220, 1), Color("0a070f"))
+		_twinkle(c, Vector2(cx + 6 + shake, base - 44), C_GOLD, 1.0 - fmod(t, 1.6) / 0.8)
 	_text_c(c, cx, base + 8, "LOCKED", Color("c07a3a"))
 
 
-## Bronze, silver and gold gates: each key flies into its own gate.
+## Bronze, silver and gold gates: each key rises into its own gate's lock and
+## the gate swings open.
 static func _keys_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
-	var top := a.position.y + 18
+	var base := a.position.y + 98
 	var colors := ["bronze", "silver", "gold"]
 	for i in 3:
 		var col: String = colors[i]
-		var x := cx + (i - 1) * 100
+		var x := cx + (i - 1) * 112
 		var tint: Color = KEY_COLORS[col]
-		c.draw_rect(Rect2(x - 26, top - 4, 52, 58), Color("0a070f"))
-		_wall(c, Rect2(x - 25, top - 3, 50, 56), STONE)
 		var open_t := 1.2 + i * 1.4
 		var is_open := lt >= open_t + 0.5
+		_glow(c, Vector2(x, base - 40), 52.0, LANTERN, 0.32)
 		if is_open:
-			_glow(c, Vector2(x, top + 26), 30.0, tint, 0.5)
-		var colm: int = DOOR_OPEN if is_open else DOOR_COLUMN[col]
-		c.draw_texture_rect_region(DOORS_TEX, Rect2(x - 16, top + 4, 32, 48), Rect2(colm * 16, 0, 16, 24))
+			_glow(c, Vector2(x, base - 34), 34.0, tint, 0.5)
+		_art_feet(c, "gate_" + col + ("_open" if is_open else ""), Vector2(x, base))
+		# the key: floating below, then up into the lock (the plate right of centre)
+		var lock := Vector2(x + 6, base - 36)
 		var kk := _ease(_k(lt, open_t, open_t + 0.5))
-		var kp := Vector2(x, top + 80 + sin(t * 3.0 + i) * 2.0 * (1.0 - kk)).lerp(Vector2(x, top + 30), kk)
+		var rest := Vector2(x, base + 18 + sin(t * 3.0 + i) * 2.0)
+		var kp := rest.lerp(lock + Vector2(-14, 0), kk)
 		var ka := 1.0 - _k(lt, open_t + 0.4, open_t + 0.55)
 		if ka > 0.0:
 			_glow(c, kp, 14.0, tint, 0.5 * ka)
-			_icon(c, col + "_key", kp, 2, ka)
+			_art(c, "key_" + col, kp, Color(1, 1, 1, ka))
 		if lt >= open_t + 0.5 and lt < open_t + 1.1:
 			var bk := _k(lt, open_t + 0.5, open_t + 1.1)
-			c.draw_arc(Vector2(x, top + 30), 6.0 + bk * 26.0, 0.0, TAU, 28, Color(tint, 0.8 * (1.0 - bk)), 1.0)
-		_text_c(c, x, top + 100, col.to_upper(), tint)
-	_key_line(c, Vector2(cx, a.end.y - 14), "Z", "FACE THE GATE WITH ITS KEY")
+			c.draw_arc(lock, 6.0 + bk * 26.0, 0.0, TAU, 28, Color(tint, 0.8 * (1.0 - bk)), 1.0)
+		_text_c(c, x, base + 30, col.to_upper(), tint)
+	_key_line(c, Vector2(cx, a.end.y - 10), "Z", "FACE THE GATE WITH ITS KEY")
 
 
 # --- 4. Creatures -------------------------------------------------------------
@@ -578,19 +561,21 @@ static func _hurts(yours: String, side: int) -> bool:
 ## A chest bursts open and its loot flies out.
 static func _chest_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
-	var cp := Vector2(cx - 20, a.position.y + 104)
+	var feet := Vector2(cx - 20, a.position.y + 128)
 	var opened := lt >= 0.8
+	_glow(c, feet + Vector2(0, -24), 50.0, LANTERN, 0.3)
 	if opened:
-		_glow(c, cp + Vector2(0, -10), 30.0 + 50.0 * (1.0 - _k(lt, 0.8, 1.8)), C_GOLD, 0.7)
+		_glow(c, feet + Vector2(0, -30), 30.0 + 50.0 * (1.0 - _k(lt, 0.8, 1.8)), C_GOLD, 0.7)
 	var shake := roundf(sin(lt * 70.0)) if lt > 0.4 and lt < 0.8 else 0.0
-	_tex(c, PROPS_TEX, Rect2((CHEST_OPEN if opened else CHEST_CLOSED) * 16, 0, 16, 16), cp + Vector2(shake, 0), 4.0)
+	c.draw_rect(Rect2(feet.x - 24, feet.y, 48, 1), Color(0, 0, 0, 0.5))
+	_art_feet(c, "chest_open" if opened else "chest", feet + Vector2(shake, 0))
 	var loot := ["hatchet", "chain_shirt", "healing_tonic", "lamp_oil", "matches", "bronze_key"]
 	for i in loot.size():
 		var ft := _k(lt, 0.9 + i * 0.1, 1.5 + i * 0.1)
 		if ft <= 0.0:
 			continue
 		var target := Vector2(cx - 20 + (i - 2.5) * 40, a.position.y + 26)
-		var p := (cp + Vector2(0, -20)).lerp(target, _ease(ft))
+		var p := (feet + Vector2(0, -26)).lerp(target, _ease(ft))
 		p.y -= sin(ft * PI) * 26.0
 		_glow(c, p, 12.0, C_GOLD, 0.25 * ft)
 		_icon(c, loot[i], p, 2)
@@ -621,75 +606,108 @@ static func _items_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 
 # --- 6. The way out -----------------------------------------------------------
 
-## The purple gate of the master chamber, glowing.
+## The purple gate of the master chamber, glowing in its wall.
 static func _master_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
-	var base := a.position.y + 126
-	_wall(c, Rect2(cx - 110, base - 104, 220, 104), STONE.lerp(PURPLE, 0.12))
+	var base := a.position.y + 130
 	var pulse := 0.5 + 0.5 * sin(t * 2.5)
-	_glow(c, Vector2(cx, base - 48), 76.0 + pulse * 8.0, PURPLE, 0.75)
-	c.draw_texture_rect_region(MASTER_TEX, Rect2(cx - 32, base - 96, 64, 96), Rect2(0, 0, 16, 24))
+	_glow(c, Vector2(cx, base - 56), 84.0 + pulse * 8.0, PURPLE, 0.75)
+	_art_feet(c, "wall", Vector2(cx, base + 1), Color(0.72, 0.62, 0.95))
+	_art_feet(c, "master", Vector2(cx, base))
+	# the eye in the door breathes
+	_glow(c, Vector2(cx, base - 54), 10.0 + pulse * 4.0, Color("c8a0ff"), 0.5)
 	for i in 16:
 		var ox := float((i * 37) % 130) - 65.0
 		var y := base - fmod(t * (10.0 + i % 5 * 3.0) + i * 23.0, 112.0)
 		var al := clampf((y - (base - 112)) / 40.0, 0.0, 1.0) * 0.8
 		c.draw_rect(Rect2(Vector2(cx + ox + sin(t + i) * 3.0, y).round(), Vector2(1, 1)), Color(Color("d8b8ff"), al))
-	c.draw_rect(Rect2(cx - 110, base, 220, 1), Color("0a070f"))
 	_text_c(c, cx, base + 8, "THE MASTER CHAMBER", Color("c8a0ff"))
 
 
-## Purple chest -> purple key -> purple gate -> out.
+## Purple chest -> purple key -> purple gate -> home.
 static func _escape_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
-	var y := a.position.y + 70
-	var chest_p := Vector2(cx - 112, y + 12)
-	var key_p := Vector2(cx, y)
-	var gate_p := Vector2(cx + 112, y)
+	var ground := a.position.y + 112
+	var chest_p := Vector2(cx - 112, ground)
+	var key_p := Vector2(cx, ground - 30)
+	var gate_p := Vector2(cx + 112, ground)
 	var opened := lt >= 0.6
 	# the chest
+	_glow(c, chest_p + Vector2(0, -20), 30.0, PURPLE, 0.3)
 	if opened:
-		_glow(c, chest_p, 20.0 + 30.0 * (1.0 - _k(lt, 0.6, 1.4)), PURPLE, 0.6)
-	_tex(c, MASTER_TEX, Rect2(32 if opened else 16, 8, 16, 16), chest_p, 3.0)
-	# the gate (it flares when the key reaches it)
+		_glow(c, chest_p + Vector2(0, -26), 20.0 + 30.0 * (1.0 - _k(lt, 0.6, 1.4)), PURPLE, 0.6)
+	_art_feet(c, "chest_purple_open" if opened else "chest_purple", chest_p)
+	# the gate: it opens on warm light when the key reaches it
 	var freed := lt >= 2.6
-	_glow(c, gate_p, 40.0 + (24.0 * (1.0 - _k(lt, 2.6, 3.4)) if freed else 0.0), PURPLE, 0.8 if freed else 0.45)
-	_tex(c, MASTER_TEX, Rect2(0, 0, 16, 24), gate_p, 3.0)
+	var warm := Color(1.0, 0.86, 0.6)
+	_glow(c, gate_p + Vector2(0, -40), 44.0 + (24.0 * (1.0 - _k(lt, 2.6, 3.4)) if freed else 0.0), warm if freed else PURPLE, 0.8 if freed else 0.45)
+	_art_feet(c, "master_small_open" if freed else "master_small", gate_p)
 	if freed and lt < 3.0:
 		var fk := _k(lt, 2.6, 3.0)
-		c.draw_rect(Rect2(gate_p - Vector2(24, 36), Vector2(48, 72)), Color(1, 1, 1, 0.6 * (1.0 - fk)))
+		c.draw_rect(Rect2(gate_p + Vector2(-20, -70), Vector2(40, 66)), Color(1, 0.97, 0.9, 0.7 * (1.0 - fk)))
 	# arrows between
 	for i in 2:
-		var ax := cx + (i * 2 - 1) * 56
-		var lit := (i == 0 and lt >= 0.8 and lt < 1.5) or (i == 1 and lt >= 2.0 and lt < 2.6)
-		_chevrons(c, Vector2(ax, y), Color(Color("c8a0ff"), 1.0 if lit else 0.3))
+		var ax := cx + (i * 2 - 1) * 58
+		var hot := (i == 0 and lt >= 0.8 and lt < 1.5) or (i == 1 and lt >= 2.0 and lt < 2.6)
+		_chevrons(c, Vector2(ax, key_p.y), Color(Color("c8a0ff"), 1.0 if hot else 0.3))
 	# the key: out of the chest, a pause in the middle, into the gate
-	_icon(c, "purple_key", key_p, 3, 0.18)
+	_art(c, "key_purple", key_p, Color(1, 1, 1, 0.16))
 	var kp := Vector2.ZERO
 	var ka := 0.0
 	if lt >= 0.7 and lt < 2.6:
 		ka = 1.0
 		if lt < 1.5:
 			var k := _ease(_k(lt, 0.8, 1.5))
-			kp = (chest_p + Vector2(0, -14)).lerp(key_p, k)
+			kp = (chest_p + Vector2(0, -26)).lerp(key_p, k)
 			kp.y -= sin(k * PI) * 20.0
 		elif lt < 2.0:
 			kp = key_p + Vector2(0, sin(t * 4.0) * 2.0)
 		else:
 			var k2 := _ease(_k(lt, 2.0, 2.6))
-			kp = key_p.lerp(gate_p, k2)
+			kp = key_p.lerp(gate_p + Vector2(0, -44), k2)
 			kp.y -= sin(k2 * PI) * 20.0
 			ka = 1.0 - _k(lt, 2.45, 2.6)
 	if ka > 0.0:
 		_glow(c, kp, 16.0, PURPLE, 0.6 * ka)
-		_icon(c, "purple_key", kp, 3, ka)
-	_text_c(c, chest_p.x, y + 44, "PURPLE CHEST", C_DIM)
-	_text_c(c, key_p.x, y + 44, "MASTER KEY", C_DIM)
-	_text_c(c, gate_p.x, y + 44, "PURPLE GATE", C_DIM)
+		_art(c, "key_purple", kp.round(), Color(1, 1, 1, ka))
+	_text_c(c, chest_p.x, ground + 8, "PURPLE CHEST", C_DIM)
+	_text_c(c, key_p.x, ground + 8, "MASTER KEY", C_DIM)
+	_text_c(c, gate_p.x, ground + 8, "PURPLE GATE", C_DIM)
 	if freed:
-		_text_c(c, gate_p.x, y - 52, "FREEDOM", Color(Color("e8d0ff"), _k(lt, 2.8, 3.3)))
+		_text_c(c, gate_p.x, ground - 92, "HOME", Color(Color("ffe6b0"), _k(lt, 2.8, 3.3)))
 
 
 # --- Drawing helpers ----------------------------------------------------------
+
+## A picture from intro_art.png at its own size, centred on `center`.
+static func _art(c: CanvasItem, name: String, center: Vector2, mod := Color.WHITE) -> void:
+	var src := IntroArt.rect(name)
+	c.draw_texture_rect_region(IntroArt.TEX, Rect2((center - src.size / 2.0).round(), src.size), src, mod)
+
+
+## ...or standing with its bottom edge on `feet`.
+static func _art_feet(c: CanvasItem, name: String, feet: Vector2, mod := Color.WHITE) -> void:
+	var src := IntroArt.rect(name)
+	c.draw_texture_rect_region(IntroArt.TEX, Rect2((feet - Vector2(src.size.x / 2.0, src.size.y)).round(), src.size), src, mod)
+
+
+## One frame of the Wolf Man (intro_wolfman.png: 0/1 by lantern, 2/3 their
+## glints, 4 caught in a match's flare) with its top-left at `top`, cut off at
+## the stage's edges.
+static func _wolf(c: CanvasItem, top: Vector2, frame: int, col: Color, a: Rect2) -> void:
+	var size := IntroArt.WOLF_SIZE
+	var dst := Rect2(top, size)
+	var clip := dst.intersection(a)
+	if clip.size.x <= 0.0 or clip.size.y <= 0.0:
+		return
+	var src := Rect2(Vector2(frame * size.x, 0) + (clip.position - dst.position), clip.size)
+	c.draw_texture_rect_region(IntroArt.WOLF, clip, src, col)
+
+
+## Where the pinprick sits in the frame (to hang a glow on it in the dark).
+static func _wolf_eye(pose: int) -> Vector2:
+	return Vector2(63, 49) if pose == 0 else Vector2(70, 51)
+
 
 ## A texture region scaled up and centred on `center`.
 static func _tex(c: CanvasItem, tex: Texture2D, src: Rect2, center: Vector2, s: float, mod := Color.WHITE) -> void:
@@ -723,7 +741,8 @@ static func _glow(c: CanvasItem, center: Vector2, r: float, col: Color, strength
 		c.draw_circle(center, r * (1.0 - i / 7.0), Color(col, 0.055 * strength))
 
 
-## The lantern on its chain, its light sized by its fuel.
+## The lantern on its chain, its light sized by its fuel: the brass body, the
+## flame inside the glass, then the cage bars and glints over it.
 static func _lantern(c: CanvasItem, lp: Vector2, anchor: Vector2, fuel: float, t: float, s := 1.0, boost := 0.0) -> void:
 	var lit := fuel > 0.0
 	var flick := sin(t * 13.0) * 1.2 + sin(t * 7.3) * 0.8
@@ -732,37 +751,56 @@ static func _lantern(c: CanvasItem, lp: Vector2, anchor: Vector2, fuel: float, t
 	var r := (16.0 + 50.0 * fuel + flick) * s + boost if lit else 0.0
 	_glow(c, lp, r, LANTERN, 1.0)
 	_glow(c, lp, r * 0.45, Color(1.0, 0.9, 0.7), 0.7)
-	# chain
+	# chain, down to the ring
 	var top := anchor.y
-	var bottom := lp.y - 26.0
+	var bottom := lp.y - 22.0
 	var y := top
 	var n := 0
 	while y < bottom:
 		var k := (y - top) / maxf(bottom - top, 1.0)
 		var x := roundf(lerpf(anchor.x, lp.x, k))
-		c.draw_rect(Rect2(x - 1, y, 2, 3), Color("6e6584") if n % 2 == 0 else Color("4a4458"))
+		if n % 2 == 0:
+			c.draw_rect(Rect2(x - 1, y, 3, 3), Color("2a2230"))
+			c.draw_rect(Rect2(x, y, 1, 3), Color("8a7a60"))
+		else:
+			c.draw_rect(Rect2(x - 1, y + 1, 3, 1), Color("5e5242"))
 		y += 3.0
 		n += 1
-	_icon(c, "brass_lantern", lp, 4, 1.0)
-	if not lit:
-		_tex(c, ITEMS_TEX, Rect2(int(Items.DATA.brass_lantern.icon) * 16, 0, 16, 16), lp, 4.0, Color(0.05, 0.04, 0.1, 0.6))
+	var body_col := Color(0.55, 0.5, 0.55) if not lit else Color.WHITE.lerp(Color(1.0, 0.95, 0.85), 0.5)
+	_art(c, "lantern", lp, body_col)
+	if lit:
+		# warm glass, then the flame on its wick (the glass spans y -8..+11 about the centre)
+		var gc := lp + Vector2(0, 1)
+		var warm := clampf(0.25 + fuel * 0.6 + boost / 40.0, 0.0, 1.0)
+		c.draw_rect(Rect2(gc.x - 9, gc.y - 9, 19, 19), Color(1.0, 0.62, 0.25, 0.22 * warm))
+		var f := clampf(0.35 + fuel * 0.75 + boost / 30.0, 0.3, 1.3) * (0.92 + 0.08 * sin(t * 23.0))
+		var base := lp + Vector2(0, 9)
+		var sway := roundf(sin(t * 9.0) * 0.7)
+		var h := 4.0 + 9.0 * f
+		for i in int(h):
+			var k := float(i) / h
+			var w := (1.0 - k) * (2.6 + 1.6 * f) * (0.6 + 0.4 * sin(k * PI))
+			var x := base.x + sway * k
+			var col := Color(1.0, 0.45, 0.12).lerp(Color(1.0, 0.86, 0.4), clampf(1.0 - k * 1.4, 0.0, 1.0))
+			c.draw_rect(Rect2(roundf(x - w), base.y - i, maxf(roundf(w * 2.0), 1.0), 1), col)
+		var core := clampf(h * 0.45, 2.0, 6.0)
+		c.draw_rect(Rect2(base.x - 1, base.y - core, 2, core), Color(1.0, 0.97, 0.85))
+	_art(c, "lantern_front", lp, body_col)
 
 
 static func _fuel_bar(c: CanvasItem, center: Vector2, fuel: float) -> void:
-	var br := Rect2(roundf(center.x - 36), center.y, 72, 4)
+	var br := Rect2(roundf(center.x - 36 + 11), center.y, 72, 4)
 	PixelFont.draw(c, Vector2(br.position.x - 22, br.position.y - 1), "FUEL", C_DIM)
 	UiKit.bar(c, br, fuel, Color("f5a33a"))
 
 
-## A match, head up. `flame` 0..1 is how big the flame is.
-static func _match(c: CanvasItem, h: Vector2, lit: bool, flame: float, alpha: float, t: float) -> void:
-	c.draw_rect(Rect2(h.x - 1, h.y + 2, 2, 22), Color(Color("d8b884"), alpha))
-	c.draw_rect(Rect2(h.x, h.y + 2, 1, 22), Color(Color("a88454"), alpha))
-	c.draw_rect(Rect2(h.x - 2, h.y - 1, 4, 4), Color(Color("c0302a"), alpha))
-	c.draw_rect(Rect2(h.x - 2, h.y - 1, 2, 1), Color(Color("e05a4a"), alpha))
+## A match, head up at `h`. `flame` 0..1 is how big the flame is; `burnt`
+## once it's done its work.
+static func _match(c: CanvasItem, h: Vector2, lit: bool, flame: float, alpha: float, t: float, burnt := false) -> void:
+	_art(c, "match_burnt" if burnt else "match", h + Vector2(0, 10), Color(1, 1, 1, alpha))
 	if lit and flame > 0.0:
 		var f := flame * (0.9 + 0.1 * sin(t * 30.0))
-		var top := h + Vector2(roundf(sin(t * 17.0) * 0.6), -3)
+		var top := h + Vector2(roundf(sin(t * 17.0) * 0.6), -4)
 		_glow(c, top, 14.0 * f, LANTERN, 0.8 * alpha)
 		c.draw_circle(top, 3.5 * f, Color(1.0, 0.5, 0.15, 0.9 * alpha))
 		c.draw_circle(top + Vector2(0, -1), 2.2 * f, Color(1.0, 0.82, 0.35, alpha))
@@ -789,28 +827,6 @@ static func _floor(c: CanvasItem, center: Vector2, w: float, h: float, col: Colo
 				c.draw_rect(Rect2(tile.position, Vector2(13, 1)), Color(1, 1, 1, 0.05 * f))
 			gx += 14.0
 		gy += 9.0
-		row += 1
-
-
-## A stone wall of staggered blocks, fading into the dark at the sides.
-static func _wall(c: CanvasItem, r: Rect2, col: Color) -> void:
-	var y := r.position.y
-	var row := 0
-	while y < r.end.y:
-		var x := r.position.x - (8.0 if row % 2 == 1 else 0.0)
-		var i := 0
-		while x < r.end.x:
-			var bx := maxf(x, r.position.x)
-			var bw := minf(x + 16.0, r.end.x) - bx
-			var shade := float(((row * 7 + i * 13) % 5)) * 0.03
-			var edge := minf(bx - r.position.x, r.end.x - (bx + bw))
-			var fade := clampf(edge / 40.0, 0.0, 1.0)
-			var bc := col.darkened(0.1 + shade)
-			c.draw_rect(Rect2(bx, y, bw - 1, 7), Color(bc, fade))
-			c.draw_rect(Rect2(bx, y, bw - 1, 1), Color(col.lightened(0.15), fade * 0.6))
-			x += 16.0
-			i += 1
-		y += 8.0
 		row += 1
 
 
