@@ -8,8 +8,10 @@ extends RefCounted
 ##   walls    real walls: a body of coursed stone, a coping of cap stones along
 ##            the top; between walls, packed earth and rubble (crypt, courtyard)
 ##            or a jagged rock mass (mountains)
-##   cliffs   the rings round high ground: rock or earth faces, the hill's own
-##            ground on top; slopes are tilted ramps
+##   cliffs   the rings round high ground: rock or earth faces; the high ground
+##            itself (ring and top together) is one flat plateau, its top in the
+##            land's wall-top style (_plateau_top) -- you stand above it all
+##            slopes are tilted ramps
 ##   trees    in the woods every wall tile is a tree: a round leafy crown, and a
 ##            trunk where you can see one (instanced, so a forest is cheap)
 
@@ -267,6 +269,8 @@ func _build_chunk(chunk: Vector2i) -> void:
 			elif world.tile_at(c) == "~":
 				_ground_quad(gkey, c, WATER_Y, uv0, uv1)
 				_banks(c)
+			elif world.height_at(c) > 0:
+				_plateau_top(c, surface(c))   # high ground: the plateau's top, not the floor's
 			else:
 				_ground_quad(gkey, c, surface(c), uv0, uv1)
 	_flush(chunk)
@@ -796,13 +800,43 @@ func _side_key(b: int) -> String:
 
 func _cliff(c: Vector2i, gkey: String, uv0: Vector2, uv1: Vector2) -> void:
 	var h := surface(c)
-	_ground_quad(gkey, c, h, uv0, uv1)
+	_plateau_top(c, h)   # (the ring is part of the plateau's flat top: its face is only on the outside)
 	var key := _side_key(_biome(c))
 	for d in DIRS:
 		var s := surface(c + d)
 		if is_wall(c + d) or s >= h - 0.01:
 			continue
 		_face(key, _edge(c, d), s, h, _n(d), Vector2(32, 16), 0.0, 0.6)
+
+
+## The plateau's top -- its ring and the ground inside it alike -- in the
+## land's wall-top style, so standing on it feels like standing up on the
+## walls: rock, scree and alpine grass in the mountains, the walls' masonry
+## and paving in the crypts and courtyards, grass and moss where the walls are
+## trees. Higher rises catch a little more light.
+const PLATEAU_TOPS := {World.B_FOREST: ["alpine_meadow", "court_meadow", "alpine_meadow"],
+	World.B_RIVER: ["court_meadow", "alpine_meadow", "court_meadow"], World.B_SWAMP: ["moss", "moss", "alpine_meadow"]}
+
+
+func _plateau_top(c: Vector2i, h: float) -> void:
+	var x0 := float(c.x)
+	var z0 := float(c.y)
+	var tkey := ""
+	if PLATEAU_TOPS.has(_biome(c)):
+		var opts: Array = PLATEAU_TOPS[_biome(c)]
+		var n := _wander(c.x * 0.3 + 17.0, c.y * 0.3 - 5.0)
+		tkey = opts[1] if n > 0.3 else (opts[2] if n < -0.38 else opts[0])
+	else:
+		tkey = _top_key(c, 0)
+	var k := 0.84 + 0.05 * clampf(h / LEVEL, 0.0, 2.0)
+	var cs := []
+	for q in [Vector2i(c.x, c.y), Vector2i(c.x + 1, c.y), Vector2i(c.x + 1, c.y + 1), Vector2i(c.x, c.y + 1)]:
+		var j := float(world._hash(q.x, q.y, 211) % 100) / 100.0 * 0.06
+		cs.append(Color(k + j, k + j, k + j))
+	_quad(tkey, Vector3(x0, h, z0), Vector3(x0 + 1, h, z0), Vector3(x0 + 1, h, z0 + 1), Vector3(x0, h, z0 + 1),
+		Vector2(x0, z0) / 2.0, Vector2(x0 + 1, z0) / 2.0, Vector2(x0 + 1, z0 + 1) / 2.0, Vector2(x0, z0 + 1) / 2.0, Vector3.UP,
+		cs[0], cs[1], cs[2], cs[3])
+	_details(c, tkey, [h, h, h, h])
 
 
 func _ramp(c: Vector2i) -> void:

@@ -166,7 +166,53 @@ func climb_over(wall: Vector2i, land: Vector2i) -> void:
 	Sfx.play("rustle", -6.0, 0.1, 0.8)
 
 
+## Off the edge of high ground: across the rim (`rim`, the plateau's edge
+## tile) and down onto `land` below (World.drop_land says where).
+const JUMP_TIME := 0.5
+
+
+func jump_down(rim: Vector2i, land: Vector2i) -> void:
+	var d := Vector2(rim - cell)
+	facing = _dir_to_facing(rim - cell)
+	_climb = {"jump": true, "from": position, "rim": world.cell_to_position(rim) + d * TILE * 0.55,
+		"to": world.cell_to_position(land), "land": land, "t": 0.0,
+		"top": float(world.height_at(cell)) * WorldMesh.LEVEL, "low": float(world.height_at(land)) * WorldMesh.LEVEL}
+	climbing = true
+	moving = true
+
+
+func _tick_jump(delta: float) -> void:
+	_climb.t += delta / JUMP_TIME
+	var u: float = _climb.t
+	var h: float = _climb.top
+	if u < 0.4:            # a quick step out to the edge, still up top
+		position = (_climb.from as Vector2).lerp(_climb.rim, u / 0.4).round()
+	elif u < 1.0:          # and over: a little hop up, then down
+		var k := (u - 0.4) / 0.6
+		if not _climb.has("hop"):
+			_climb["hop"] = true
+			Sfx.play("dodge", -8.0)
+		position = (_climb.rim as Vector2).lerp(_climb.to, k).round()
+		h = lerpf(_climb.top, _climb.low, k * k) + 0.32 * sin(k * PI) * (1.0 - k * 0.5)
+	else:
+		position = _climb.to
+		cell = _climb.land
+		climb_lift = 0.0
+		climbing = false
+		moving = false
+		_climb = {}
+		Sfx.play("bump", -4.0, 0.05, 0.7)   # a thump as you land
+		stepped.emit(cell)
+		return
+	# how high that is above the ground right under you (the 3D view stands you on it)
+	var under := Vector2i(int(floor(position.x / TILE + 0.5)), int(floor(position.y / TILE + 0.5)))
+	climb_lift = maxf(h - float(world.height_at(under)) * WorldMesh.LEVEL, 0.0)
+
+
 func _tick_climb(delta: float) -> void:
+	if _climb.get("jump", false):
+		_tick_jump(delta)
+		return
 	_climb.t += delta / CLIMB_TIME
 	var u: float = _climb.t
 	var near: Vector2 = (_climb.from as Vector2).lerp(_climb.wall, 0.5)    # at the wall's face
@@ -207,6 +253,11 @@ func _try_start_move() -> void:
 			bumped.call(target, Input.is_action_just_pressed(pfx + _dir_action(dir)))
 		return
 	if not world.is_walkable(target):
+		# at the edge of high ground: jump down (World.drop_land)
+		var land: Vector2i = world.drop_land(cell, dir)
+		if land.x >= 0 and not (blocked.is_valid() and blocked.call(land)):
+			jump_down(target, land)
+			return
 		if bumped_wall.is_valid():
 			bumped_wall.call(target, Input.is_action_just_pressed(pfx + _dir_action(dir)))
 		return

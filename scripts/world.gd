@@ -944,6 +944,60 @@ func _draw() -> void:
 					_rock(o, rk.x, rk.y, rk.z)
 
 
+## Off the edge of high ground: walking from `from` (on top) in direction `d`
+## over the plateau's rim, where do you land? Vector2i(-1, -1) if you can't
+## jump there: not the rim of the rise you're on, nowhere to land, or -- so a
+## jump never skips a locked gate -- the landing isn't joined to the foot of a
+## way up onto this rise (Player.jump_down does the jump).
+func drop_land(from: Vector2i, d: Vector2i) -> Vector2i:
+	var none := Vector2i(-1, -1)
+	var top := height_at(from)
+	if top <= 0 or ramps.has(from) or cliffs.has(from):
+		return none
+	var rim := from + d
+	if not cliffs.has(rim) or int(cliffs[rim]) != top:
+		return none
+	var land := rim + d
+	if not is_walkable(land) or cliffs.has(land) or ramps.has(land) or height_at(land) >= top:
+		return none
+	if not _drop_joined(land, top):
+		return none
+	return land
+
+
+var _drop_ok := {}   ## landings already found joined (doors only ever open, so they stay so)
+
+
+## Can you walk from `land` (low ground) to a slope up to level `top` without
+## climbing and without going through anything shut? (A local search.)
+func _drop_joined(land: Vector2i, top: int) -> bool:
+	var key := Vector3i(land.x, land.y, top)
+	if _drop_ok.has(key):
+		return true
+	var lvl := height_at(land)
+	var box := Rect2i(land - Vector2i(48, 48), Vector2i(97, 97))
+	var seen := {land: true}
+	var q: Array[Vector2i] = [land]
+	var head := 0
+	while head < q.size():
+		var c: Vector2i = q[head]
+		head += 1
+		if ramps.has(c):
+			var up_c: Vector2i = c + {"s": Vector2i.UP, "w": Vector2i.RIGHT, "e": Vector2i.LEFT}.get(ramps[c], Vector2i.UP)
+			if height_at(up_c) == top:
+				_drop_ok[key] = true
+				return true
+		for dd in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+			var n: Vector2i = c + dd
+			if seen.has(n) or not box.has_point(n) or not is_walkable(n) or cliffs.has(n):
+				continue
+			if height_at(n) != lvl and not ramps.has(n):
+				continue
+			seen[n] = true
+			q.append(n)
+	return false
+
+
 func height_at(cell: Vector2i) -> int:
 	if not _in_bounds(cell) or heights.is_empty():
 		return 0
