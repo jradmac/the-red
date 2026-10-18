@@ -2,9 +2,11 @@ class_name Inventory
 extends Node
 ## 4 item slots, health, and your attack/defense totals.
 ##
-## Stat rule: your ATTACK is your best weapon (bare fists = 1), your DEFENSE
-## your best armor -- the ones you hold and wear. Spare gear in the bag is just
-## spare (or something to sell... one day). Potions of the same type stack to 3.
+## Stat rule: your ATTACK is every weapon you carry added together (bare fists
+## = 1); the one in your hand -- the one you see, on your back and on the attack
+## card -- is the strongest of them, and of equally strong ones the one you
+## picked up last. Your DEFENSE is your best armor, the one you wear. Potions of
+## the same type stack to 3.
 
 signal changed
 
@@ -38,6 +40,29 @@ func _init() -> void:
 		slots.append({})
 	for id in START_ITEMS:
 		add(id)
+	changed.connect(_stamp_new)
+
+
+## Every stack that arrives in the bag gets a number, counting up, so "the one
+## picked up last" can be told apart (stack["got"]; kept in saves).
+func _stamp_new() -> void:
+	var top := 0
+	for s in slots:
+		top = maxi(top, int(s.get("got", 0)))
+	for s in slots:
+		if not s.is_empty() and not s.has("got"):
+			top += 1
+			s["got"] = top
+
+
+## Is stack `a` the better one to hold or wear than `b` (stronger, or as
+## strong and picked up later)?
+func _better(a: Dictionary, b: Dictionary) -> bool:
+	if b.is_empty():
+		return true
+	var pa := Items.power(a)
+	var pb := Items.power(b)
+	return pa > pb or (pa == pb and int(a.get("got", 0)) > int(b.get("got", 0)))
 
 
 func _process(delta: float) -> void:
@@ -85,12 +110,11 @@ func add_stack(stack: Dictionary) -> bool:
 
 ## The slot holding your best item of a kind (-1 if none).
 func best_slot(kind_name: String) -> int:
+	_stamp_new()
 	var best := -1
-	var best_v := -1
 	for i in SLOTS:
 		var s := slots[i]
-		if not s.is_empty() and Items.kind(s.id) == kind_name and Items.power(s) > best_v:
-			best_v = Items.power(s)
+		if not s.is_empty() and Items.kind(s.id) == kind_name and (best < 0 or _better(s, slots[best])):
 			best = i
 	return best
 
@@ -132,17 +156,16 @@ func _total(stat: String, kind_name: String, base: int) -> int:
 ## The id of your best item of a kind (by `stat`), or "" if you have none.
 ## This is what the hero visibly wears / carries.
 func best_id(kind_name: String, stat: String) -> String:
-	var best := ""
-	var best_v := -1
-	for s in slots:
-		if not s.is_empty() and Items.kind(s.id) == kind_name and Items.power(s) > best_v:
-			best_v = Items.power(s)
-			best = s.id
-	return best
+	var i := best_slot(kind_name)
+	return String(slots[i].id) if i >= 0 else ""
 
 
 func attack() -> int:
-	return _total("atk", "weapon", 1)
+	var sum := 0
+	for s in slots:
+		if not s.is_empty() and Items.kind(s.id) == "weapon":
+			sum += int(Items.DATA[s.id]["atk"]) + Items.bonus(s)
+	return sum if sum > 0 else 1
 
 
 func defense() -> int:

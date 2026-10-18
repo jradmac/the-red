@@ -178,7 +178,7 @@ One save slot (save_game.gd, user://scythe_save.dat). The labyrinth is rebuilt f
 - Save version 2 (older saves are from a smaller map and are ignored).
 
 ## Creatures and battle balance
-- ATK = your best weapon, DEF = your best armor (spares no longer add up).
+- ATK = all your weapons added together (the strongest -- or, of equals, the last picked up -- is the one shown in your hand); DEF = your best armor.
 - Density rises with depth (Enemies.DENSITY): ~0.35x average near the start, ~1.6x at the bottom.
 - 40% of insects are hunters; the rest keep their distance and only fight if you walk right up.
   Anything chasing gives up if you open a gap or it chases too long, then ignores you for 5-9 s.
