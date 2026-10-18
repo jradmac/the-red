@@ -218,10 +218,6 @@ func _draw_title() -> void:
 	for i in _motes.size():   # motes in front
 		if i % 2 == 1:
 			_draw_mote(_motes[i])
-	# the line under it, lit the same way
-	var sy := LOGO_Y + LOGO.get_height() + 8
-	var sub_b := 0.12 + 0.88 * (1.0 - smoothstep(radius * 0.45, radius * 1.05, Vector2(cx, sy).distance_to(light)))
-	_text_c(cx, sy, "DON'T STRAY FROM THE PATH.", Color(C_DIM, 0.9 * sub_b))
 	match _state:
 		"press":
 			if fmod(_t, 1.1) < 0.75:
