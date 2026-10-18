@@ -2,7 +2,7 @@
 
     gear_big.png, gear_side_big.png, gear_side.png   -- via make_gear_big.py (column 6)
     hero_big*.png, hero_big_arm.png                  -- via make_hero_big.py (look 6)
-    hero.png, hero_blue.png, hero_p2.png, hero_p2_blue.png   look 6 (rows 24-27)
+    hero.png, hero_blue.png, hero_p2.png, hero_p2_blue.png   look 6 (rows 24-27; make_hero_tilt.py)
     gear.png                                          column 6
     items.png                                         icons 32 (axe) and 33 (cloak), 34-39 (the extras)
     gear.png (again)                                  columns 7-12 (the extras)
@@ -57,8 +57,9 @@ def small_hero_block():
 def main():
     make_gear_big.main()      # (column 6 comes from the hook in make_gear_big.py)
     make_hero_big.main()      # (look 6 comes from the hook in make_hero_big.py)
-    # the small hero, in all four of its sheets
-    block = small_hero_block()
+    # the small hero, in all four of its sheets (drawn from above, make_hero_tilt.py)
+    import make_hero_tilt
+    block = make_hero_tilt.hero_sheet([make_hero_tilt.LOOKS[LOOK_INDEX]])
     tmp = A / "_legendary_tmp.png"
     block.save(tmp)
     variants = {"hero.png": block, "hero_blue.png": make_art.blue_lantern_sheet(tmp)}

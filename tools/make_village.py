@@ -874,6 +874,14 @@ GUARD_TABARDS = [("3a6a3a", "5a8a54", "2a4a2a"), ("3a4a8a", "5a6aaa", "2a3460"),
 
 
 def npc_sheet():
+    """The villagers -- now drawn seen from above, like the hero, to sit in the
+    3D view (tools/make_hero_tilt.py npc_sheet: the same people, colours and
+    layout). The eye-level version is npc_sheet_flat()."""
+    import make_hero_tilt
+    return make_hero_tilt.npc_sheet()
+
+
+def npc_sheet_flat():
     rnd = random.Random(5)
     looks = []
     for i in range(10):

@@ -51,7 +51,7 @@ const WEAPONS := {"rusty_dagger": 0, "bone_club": 1, "hatchet": 2, "hooked_sickl
 ## steeper side-view sprite (gear_side*.png), grip up behind your head and the
 ## blade down along your pack (mirrored facing right). tools/make_straps.py
 ## draws the baldric and loops to match.
-const CARRY_OFF := [Vector2(-4, 3), Vector2(1, 5), Vector2(10, 2), Vector2(-10, 2)]
+const CARRY_OFF := [Vector2(-4, 3), Vector2(1, 5), Vector2(8, 3), Vector2(-8, 3)]
 const CARRY_OFF_BIG := [Vector2(-4, 20), Vector2(4, 20), Vector2(28, 12), Vector2(-28, 12)]
 
 

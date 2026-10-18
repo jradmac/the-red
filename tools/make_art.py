@@ -380,6 +380,14 @@ def blue_lantern_sheet(path):
 
 
 def hero_sheet():
+    """The hero's sheet -- now drawn seen from above, to sit in the 3D view
+    (tools/make_hero_tilt.py; same layout). The eye-level version that was
+    here is hero_sheet_flat()."""
+    import make_hero_tilt
+    return make_hero_tilt.hero_sheet()
+
+
+def hero_sheet_flat():
     """9 columns (stand, walk x4, run x4) x 4 rows (down, up, left, right) per
     armour look, looks stacked top to bottom in ARMOR_LOOKS order."""
     sheet = Image.new("RGBA", (16 * HERO_COLS, 24 * 4 * len(ARMOR_LOOKS)), (0, 0, 0, 0))
