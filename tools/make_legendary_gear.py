@@ -4,7 +4,8 @@
     hero_big*.png, hero_big_arm.png                  -- via make_hero_big.py (look 6)
     hero.png, hero_blue.png, hero_p2.png, hero_p2_blue.png   look 6 (rows 24-27)
     gear.png                                          column 6
-    items.png                                         icons 32 (axe) and 33 (cloak)
+    items.png                                         icons 32 (axe) and 33 (cloak), 34-39 (the extras)
+    gear.png (again)                                  columns 7-12 (the extras)
 
 The last three are sheets other tools build whole (make_art.py, make_tool_items.py):
 run this after them. Run:  python3 tools/make_legendary_gear.py
@@ -73,6 +74,13 @@ def main():
     _put(A / "gear.png", axe16, (AXE_COL * 16, 0), ((AXE_COL + 1) * 16, 16))
     _put(A / "items.png", axe16, (ICON_AXE * 16, 0), ((ICON_AXE + 1) * 16, 16))
     _put(A / "items.png", lg.cloak_icon(), (ICON_CLOAK * 16, 0), ((ICON_CLOAK + 1) * 16, 16))
+    # the everyday extras: carried (gear.png) and their icons
+    sheet = make_gear_big.render((9.0, 55.0), (1.0, -1.0))
+    for k in range(len(lg.EXTRA)):
+        col = lg.EXTRA_FIRST + k
+        small = lg.small_axe(sheet.crop((col * 64, 0, col * 64 + 64, 64)))
+        _put(A / "gear.png", small, (col * 16, 0), ((col + 1) * 16, 16))
+        _put(A / "items.png", small, ((lg.EXTRA_ICON + k) * 16, 0), ((lg.EXTRA_ICON + k + 1) * 16, 16))
     print("wrote the huntsman's axe and the wolfskin cloak into the gear, hero and item sheets")
 
 

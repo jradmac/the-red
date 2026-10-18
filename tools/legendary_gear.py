@@ -6,6 +6,9 @@
     WOLFSKIN CLOAK   the Big Bad Wolf's own pelt, worn with its head for a hood:
                      ears up, muzzle over your brow, amber glass for eyes.
 
+Also six everyday weapons for variety (EXTRA: pitchfork, cleaver, wolf spear,
+flail, silver dagger, war scythe), drawn the same way, in the usual loot.
+
 The other generators call in here, so re-running any of them keeps these:
     make_gear_big.py   register_gear()  -> the axe in gear_big / gear_side(_big).png
     make_hero_big.py   wolf_hero()      -> the cloak as look 6 of the big hero
@@ -52,13 +55,126 @@ def _axe(s, g):
     s.glints("metal", 0.07)
 
 
+# --- more everyday weapons, for variety (columns 7-12) -----------------------------------
+
+def _pitchfork(s, g):
+    at, grip = g["at"], g["grip"]
+    s.limb([at(0), at(50)], 1.8, "ash")
+    s.line([at(3, -0.6), at(48, -0.6)], "ash", 4)
+    grip(s, 4, 14, 2.1, "leather", wraps=False)
+    s.limb([at(48, -5.5), at(48, 5.5)], 1.4, "metal")           # the crossbar
+    for o in (-5, 0, 5):                                        # three tines, rusted at the roots
+        s.limb([at(48, o), at(63, o * 0.8)], 1.1, "metal", r_end=0.4)
+        s.blob(*at(49.5, o), 1.0, 1.0, "rust", outline=False, bands=(-0.3, 0.2, 0.7))
+    s.texture("ash", 0.12, -1, tones=(2, 3, 4), seed=11)
+
+
+def _cleaver(s, g):
+    at, grip = g["at"], g["grip"]
+    s.blob(*at(1.5), 2.3, 2.3, "metal")
+    grip(s, 3, 18, 2.4, "wood")
+    for t in (7, 13):
+        s.dot(*at(t), "brass", 4)                               # rivets in the handle
+    # a broad rectangular blade, the edge on the far side, a hole to hang it by
+    s.poly([at(19, -2.5), at(44, -2.5), at(46, 0), at(46, 11), at(19, 10)], "metal", grad=(3, 2))
+    s.line([at(20, 9.6), at(45.5, 10.6)], "metal", 5)
+    s.blob(*at(41, 1.5), 1.6, 1.6, "dark", outline=False)
+    s.line([at(22, 1), at(34, 1)], "metal", 1)
+    for (t, o) in ((28, 6), (36, 8)):
+        s.blob(*at(t, o), 1.2, 0.9, "rust", outline=False, bands=(-0.3, 0.2, 0.7))
+    s.glints("metal", 0.05)
+
+
+def _wolf_spear(s, g):
+    at, grip = g["at"], g["grip"]
+    s.limb([at(0), at(50)], 1.8, "ash")
+    s.line([at(3, -0.6), at(48, -0.6)], "ash", 4)
+    grip(s, 5, 17, 2.2, "leather")
+    s.blob(*at(1), 2.0, 2.0, "metal")
+    s.limb([at(47, -6), at(47, 6)], 1.5, "metal")              # the crossbar (lugs)
+    s.blob(*at(47, -6), 1.4, 1.4, "metal")
+    s.blob(*at(47, 6), 1.4, 1.4, "metal")
+    s.poly([at(49, -3.4), at(57, -3.2), at(65, 0), at(57, 3.2), at(49, 3.4)], "metal", grad=(3, 2))
+    s.line([at(50, 0), at(63, 0)], "metal", 5)
+    s.limb([at(44, 2.0), at(41, 5.0), at(39, 7.5)], 0.8, "fur", r_end=0.4)   # a tuft of grey fur tied on
+    s.texture("ash", 0.12, -1, tones=(2, 3, 4), seed=12)
+
+
+def _flail(s, g):
+    at, grip = g["at"], g["grip"]
+    s.limb([at(0), at(24)], 2.2, "wood")
+    grip(s, 2, 15, 2.5, "leather")
+    s.blob(*at(25), 2.4, 2.4, "metal")
+    # the chain, sagging, then the spiked ball
+    links = [at(27 + k * 3.3, 2.2 * math.sin(k * 0.6) + k * 0.5) for k in range(7)]
+    for k, (x, y) in enumerate(links):
+        s.blob(x, y, 1.3, 1.0 if k % 2 else 1.3, "metal", bands=(-0.3, 0.2, 0.7))
+    bx, by = at(55, 4.5)
+    for k in range(8):
+        a = k * math.pi / 4 + 0.2
+        s.limb([(bx, by), (bx + math.cos(a) * 8.5, by + math.sin(a) * 8.5)], 1.2, "metal", r_end=0.3)
+    s.blob(bx, by, 5.5, 5.5, "dark", bands=(-0.3, 0.05, 0.5, 0.85, 0.96))
+    s.glints("metal", 0.06)
+
+
+def _silver_dagger(s, g):
+    at, grip, guard, blade = g["at"], g["grip"], g["guard"], g["blade"]
+    s.blob(*at(2), 2.6, 2.6, "silver")
+    grip(s, 4, 15, 2.0, "wrap")
+    guard(s, 16, 6.5, 1.5, "silver")
+    s.blob(*at(16), 1.8, 1.8, "ribbon")                         # a red stone in the guard
+    blade(s, 17, 47, 3.0, "silver")
+    for t in (23, 30, 37):                                      # a little cross etched down it
+        x, y = at(t, 0)
+        s.pdot(round(x), round(y), "8a9ab0")
+    s.glints("silver", 0.12)
+
+
+def _war_scythe(s, g):
+    at, grip = g["at"], g["grip"]
+    s.limb([at(0), at(58)], 1.9, "wood")
+    s.line([at(3, -0.6), at(56, -0.6)], "wood", 4)
+    grip(s, 3, 13, 2.3, "leather")
+    s.limb([at(30, 0), at(30, 5)], 1.3, "wood", r_end=1.0)      # the second grip (the nib)
+    s.blob(*at(57), 2.4, 2.4, "metal")
+    # the long curved blade, sweeping back down from the top of the snath
+    pts = []
+    for k in range(14):
+        a = k * 0.2
+        pts.append(at(58 - k * 2.4 + math.sin(a) * 2, -2 - k * 1.6 - math.sin(a) * 4))
+    s.limb([at(58)] + pts, 3.0, "metal", r_end=0.4)
+    s.limb([at(58)] + pts[:-1], 0.9, "metal", r_end=0.3, outline=False, bands=(9,))   # the honed edge
+    s.texture("wood", 0.12, -1, tones=(2, 3, 4), seed=13)
+    s.glints("metal", 0.08)
+
+
+# id, name, atk, tier (Items.GEAR_TIER), loot weight, price, description
+EXTRA = [
+    ("pitchfork", "PITCHFORK", 3, 0, 3, 12, "THREE RUSTED TINES. IT STILL SMELLS OF HAY.", _pitchfork),
+    ("cleaver", "CLEAVER", 3, 0, 3, 12, "A BUTCHER'S CLEAVER. THE INN WILL WANT IT BACK.", _cleaver),
+    ("wolf_spear", "WOLF SPEAR", 4, 1, 2, 26,
+     "A BOAR SPEAR WITH A CROSSBAR, SO WHATEVER YOU STAB CAN'T CLIMB THE SHAFT TO YOU.", _wolf_spear),
+    ("flail", "FLAIL", 5, 2, 2, 44, "A SPIKED BALL ON A CHAIN. HARD TO AIM. HARDER TO STOP.", _flail),
+    ("silver_dagger", "SILVER DAGGER", 5, 2, 1, 50, "BLESSED SILVER. THE DEMONS DON'T LIKE TO LOOK AT IT.",
+     _silver_dagger),
+    ("war_scythe", "WAR SCYTHE", 6, 2, 1, 72,
+     "A REAPER'S BLADE TURNED TO STAND UP STRAIGHT. FOR A HARVEST OF A DIFFERENT KIND.", _war_scythe),
+]
+EXTRA_FIRST = 7       # their column in the gear sheets (the axe is 6)
+EXTRA_ICON = 34       # their first icon in items.png (the legendary pair are 32, 33)
+
+
 def register_gear(order, designs, pal, g):
-    """Called by make_gear_big.py: the axe after the grave blade (column 6)."""
+    """Called by make_gear_big.py: the axe after the grave blade (column 6),
+    then the everyday extras (columns 7-12)."""
     if AXE in order:
         return
     order.append(AXE)
     designs.append(lambda s: _axe(s, g))
-    pal.update({"ash": "b08a5a", "silver": "dfe8f4", "ribbon": "c4323e"})
+    for row in EXTRA:
+        order.append(row[0])
+        designs.append(lambda s, fn=row[7]: fn(s, g))
+    pal.update({"ash": "b08a5a", "silver": "dfe8f4", "ribbon": "c4323e", "fur": "8c8690"})
 
 
 # --- the armour, big (make_hero_big.py) ---------------------------------------------------
