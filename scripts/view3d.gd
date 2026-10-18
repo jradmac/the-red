@@ -19,6 +19,7 @@ extends Node
 
 const PITCH := deg_to_rad(52.0)     ## how steeply the camera looks down
 const DIST := 44.0                  ## camera distance (tiles) from the spot it looks at
+const SUPERSAMPLE := 2.0           ## the 3D world is drawn this much bigger, then averaged down
 const LIGHT_POOL := 16              ## lamps, candles, wisps... at once (nearest first)
 const LANTERN_Y := 1.3              ## how high a lantern is held (walls are ~1.05)
 const SHADOW_LIGHTS := 4            ## ...the nearest this many cast shadows (walls block them)
@@ -42,6 +43,7 @@ var sprites: SpriteHost
 var objects: Objects3D
 var village: Village3D
 var traps3d: Traps3D
+var tall_grass: TallGrass   ## the tall grass you wade through (tall_grass.gd)
 var active := false
 
 var _views: Array = []        ## per camera: {vp, cam, target: Vector3, display: Viewport, show: CanvasLayer}
@@ -149,8 +151,13 @@ func _add_view() -> Dictionary:
 	var v := SubViewport.new()
 	v.size = Vector2i(360, 240)
 	v.msaa_3d = Viewport.MSAA_DISABLED
+	# the world drawn at twice the size and averaged down (supersampled): clean
+	# edges, smooth shading and shadows, no shimmer as you move -- the pixel
+	# sprites still land on whole pixels, so they stay sharp
+	v.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	v.scaling_3d_scale = SUPERSAMPLE
 	v.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	v.positional_shadow_atlas_size = 2048
+	v.positional_shadow_atlas_size = 4096   # (crisper lamp shadows at the doubled size)
 	if _views.is_empty():
 		v.own_world_3d = true
 	add_child(v)
@@ -183,6 +190,9 @@ func build() -> void:
 	traps3d = Traps3D.new()
 	root.add_child(traps3d)
 	traps3d.build(self)
+	tall_grass = TallGrass.new()
+	root.add_child(tall_grass)
+	tall_grass.build(self)
 	# everything lit by the same light model (light_style.gd)
 	LightStyle.convert(root)
 	_build_decals()
@@ -348,6 +358,8 @@ func _process(delta: float) -> void:
 		_place_overlay(v, at, g)
 	var ts := targets()
 	_update_lights(ts)
+	if tall_grass != null:
+		tall_grass.update()
 	sprites.update(ts)
 	_update_decals(ts)
 
@@ -514,7 +526,7 @@ func _source_pos(s: Dictionary) -> Vector3:
 		# a lantern: held up at your side, a little above the walls' tops, so
 		# its pool reaches along the corridor and catches the coping
 		var base := to3d(node.global_position)
-		return Vector3(p.x / World.TILE, base.y + LANTERN_Y, base.z)
+		return Vector3(p.x / World.TILE, base.y + LANTERN_Y + (node as Player).climb_lift, base.z)
 	var x := p.x / World.TILE
 	var z := p.y / World.TILE
 	return Vector3(x, ground_at(x, z) + 0.8, z)

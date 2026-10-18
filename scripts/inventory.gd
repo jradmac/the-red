@@ -19,6 +19,11 @@ var max_health := MAX_HEALTH   ## 10 alone, 5 each with two players
 var rubies := 0   ## money, for the villages
 var health := MAX_HEALTH
 var bomb_planter: Callable   ## set by main: plants a bomb at your feet, returns a message
+## Set by main: the tools. Each returns a message for the text box; one that
+## starts with "!" means it didn't work (the tool isn't used up).
+var seer_user: Callable      ## seer stone: lays the trail to the nearest gate
+var portal_planter: Callable ## portal flare: planted at your feet
+var ladder_placer: Callable  ## ladder: set against the wall you face
 var windbreak_left := 0.0
 
 # Set by main so potions can affect the world.
@@ -170,9 +175,17 @@ func heal(amount: int) -> void:
 ## Uses the potion in slot i. Returns a message for the text box.
 func use_slot(i: int) -> String:
 	var s := slots[i]
-	if s.is_empty() or not (Items.kind(s.id) in ["potion", "bomb"]):
+	if s.is_empty() or not (Items.kind(s.id) in ["potion", "bomb", "tool"]):
 		return ""
 	var msg := ""
+	var tool := {"seer_stone": seer_user, "portal_flare": portal_planter, "ladder": ladder_placer}
+	if tool.has(s.id):
+		var use: Callable = tool[s.id]
+		if not use.is_valid():
+			return ""
+		msg = use.call()
+		if msg.begins_with("!"):
+			return msg.substr(1)   # it didn't work: keep it
 	match s.id:
 		"bomb":
 			if not bomb_planter.is_valid():

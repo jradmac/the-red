@@ -158,11 +158,15 @@ func _browse() -> void:
 			_close()
 			pickups.picked.emit(inventory.use_slot(_sel))
 			return
-		if Items.kind(id) != "potion":
-			_say("ONLY POTIONS CAN BE USED.", Color("ff4a5a"))
+		if not (Items.kind(id) in ["potion", "tool"]):
+			_say("ONLY POTIONS AND TOOLS CAN BE USED.", Color("ff4a5a"))
 			Sfx.play("ui_deny")
 			return
+		var before := int(slot.get("qty", 1))
 		var msg := inventory.use_slot(_sel)
+		var used := inventory.slots[_sel].is_empty() or int(inventory.slots[_sel].get("qty", 1)) < before
+		if Items.kind(id) == "tool" and used:
+			_close()   # a tool worked: out of the bag, to see what it did
 		if msg != "":
 			player.ui_lock = ""
 			dialog.say(msg, id)
@@ -360,8 +364,7 @@ func _draw_bag() -> void:
 	var facing: int = TURN_ORDER[_turn]
 	var bob := -1.0 if fmod(_time, 1.6) < 0.8 else 0.0   # breathing
 	HeroLook.use(player)
-	HeroLook.draw(_canvas, center - Vector2(32, 92), 4.0, facing, 0, armor, weapon, bob,
-		Vector2(0, bob * 0.5))
+	HeroLook.draw_big(_canvas, center - Vector2(32, 92), facing, armor, weapon, bob * 2.0, Vector2(0, bob))
 	# hearts + stats under the pedestal
 	var hy := hero_r.position.y + 128
 	for i in inventory.max_health:

@@ -1,6 +1,6 @@
 """Battle sprites for the creatures added with the rarity system: three insects
 (firefly, scorpion, stag beetle) and three demons (marionette, bog witch,
-grandmother), each in a common and a rarer colour. Same conventions as
+shepherd), each in a common and a rarer colour. Same conventions as
 battle_insects.py (48 x 48, facing you) and battle_demons.py (48 x 72);
 make_battle_sprites.py registers them (see register()).
 """
@@ -296,97 +296,64 @@ def witch(s, f, o):
             s.dot(x0, y0 - h - 1.5, "fff6d0")
 
 
-def grandmother(s, f, o):
-    """Grandmother, sitting up in her nightgown and bonnet, spectacles on her
-    nose... and the nose is a muzzle, and the hands are paws. The Big Bad Wolf
-    has stopped pretending: the bonnet torn, the gown split, the grin wide."""
-    wolf = o.get("wolf", False)
+def shepherd(s, f, o):
+    """The Shepherd: very tall in a long hooded robe, a mask of bone with two thin
+    slits where the hood should hold a face, a crook taller than itself. From the
+    crook hangs a cage-lantern, and in the cage a captured flame -- one of the
+    wandering lights, herded in. The Pale Shepherd wears bone-white, and what it
+    keeps burns red."""
+    pale = o.get("pale", False)
     b, l = BREATH[f], LEAN[f]
-    # the nightgown, long, frilled at the hem; big clawed feet poking out under it
-    hem = [(8 + k * 2.7, 65 + (2 if (k + f) % 2 else 0)) for k in range(13)]
-    s.poly([(17 + l, 30 + b), (31 + l, 30 + b), (38, 48), (42, 65)] + hem[::-1] + [(6, 65), (10, 48)], "cloak",
-           grad=(3, 1))
-    for k in range(13):   # the frill
-        x = 7 + k * 2.75
-        s.blob(x, 66, 1.5, 1.2, "veil", bands=(-0.2, 0.3, 0.7, 0.95))
-    for x0 in (13, 19, 29, 35):
-        s.line([(x0 + l * 0.5, 36 + b), (x0 + (x0 - 24) * 0.35, 63)], "cloak", 1)
-    for k in range(9):   # a print of little flowers
-        x, y = 12 + (k * 7) % 24, 40 + (k * 5) % 22
-        s.dot(x + (y - 40) * 0.1, y, "gum", 3)
-    if wolf:   # the gown split up the front, fur showing through
-        s.poly([(22, 44), (26, 44), (28, 65), (20, 65)], "fur", grad=(2, 1))
-        s.line([(22, 44), (20, 65)], "cloak", 0)
-        s.line([(26, 44), (28, 65)], "cloak", 0)
-    feet(s, f, (17, 31), 71, "fur", r=2.8)
-    # the shawl over the shoulders
-    s.poly([(15 + l, 29 + b), (33 + l, 29 + b), (34 + l, 34 + b), (24 + l, 40 + b), (14 + l, 34 + b)], "veil",
-           grad=(3, 1))
-    for k in range(5):
-        s.line([(16 + k * 4 + l, 30 + b), (19 + k * 2 + l, 37 + b)], "veil", 1)
-    # paws: one at the shawl, one reaching
+    sway = [0, 1, 0, -1][f]
+    # the robe: narrow at the shoulders, falling straight to a long ragged hem that trails into nothing
+    hem = [(9 + k * 2.4, 66 + (3 if (k + f) % 2 else 0) + (1 if k % 3 == 1 else 0)) for k in range(12)]
+    s.poly([(18 + l, 24 + b), (30 + l, 24 + b), (36, 44), (37, 66)] + hem[::-1] + [(10, 66), (12, 44)], "cloak",
+           grad=(2, 0))
+    for x0 in (15, 20, 26, 31):
+        s.line([(x0 + l * 0.5, 30 + b), (x0 + (x0 - 24) * 0.3, 65)], "cloak", 0)
+        s.line([(x0 + 1 + l * 0.5, 31 + b), (x0 + 1 + (x0 - 24) * 0.3, 64)], "cloak", 2)
+    for k in range(5):   # wisps trailing off the hem
+        x = 12 + k * 6
+        s.line([(x, 67), (x + [0, 1, 0, -1][(k + f) % 4], 71)], "cloak", 1, only_on=False)
+    # the crook, gripped in its right hand, planted beside it, curling over at the top
+    cx = 38 + sway * 0.3
+    s.limb([(cx, 70), (cx - 0.5, 30), (cx, 8 + b)], 1.1, "wood", r_end=1.0)
+    crook = [(cx + 4.5 * math.sin(a * 0.35), 8 + b - 4.5 * (1 - math.cos(a * 0.35)) + (a * 0.35 > 2.4) * 0)
+             for a in range(0, 12)]
+    crook = [(cx + 4 * math.sin(t), 8 + b - 4 * math.cos(t) + 4) for t in [k * 0.38 for k in range(0, 10)]]
+    s.limb([(cx, 8 + b)] + [(x - 4 * 0 , y - 4) for x, y in crook], 1.0, "wood", r_end=0.7)
+    # the cage-lantern hanging from the crook's tip, its prisoner flame inside
+    lx, ly = crook[-1][0] - 0.5, crook[-1][1] + 3 + abs(sway) * 0.5
+    s.line([(crook[-1][0], crook[-1][1] - 4), (lx, ly - 3)], "wood", 1, only_on=False)
+    for k in range(7):   # its light, a little haze of it
+        a = k * 0.9 + f * 0.6
+        s.dot(lx + math.cos(a) * 5.5, ly + 2 + math.sin(a) * 4.5, "glow", 3 + (k + f) % 2)
+    s.blob(lx, ly + 2.5, 2.4, 3.2, "glow", bands=(-0.2, 0.25, 0.6, 0.85, 0.97))
+    s.blob(lx - 0.5, ly + 2, 1.0, 1.4, "glow", bands=(-9, -9, -9, -9), outline=False)
+    for dx in (-2.6, 0, 2.6):   # the cage bars
+        s.line([(lx + dx, ly - 1), (lx + dx * 1.1, ly + 6)], "wood", 1, only_on=False)
+    s.limb([(lx - 3, ly - 1), (lx + 3, ly - 1)], 0.7, "wood")
+    s.limb([(lx - 3, ly + 6.5), (lx + 3, ly + 6.5)], 0.7, "wood")
+    # arms: too long, thin hands; one on the crook, one hanging with its fingers spread
     ah = [0, 1, 1, -1][f]
-    s.limb([(14 + l, 33 + b), (9, 41 + b), (11, 49 + b + ah)], 2.4, "cloak", r_end=2.0)
-    s.blob(11, 50 + b + ah, 3, 3, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
-    claw(s, (11, 52 + b + ah), -1, "claw", n=4, length=5)
-    s.limb([(34 + l, 33 + b), (39, 40 + b - ah), (37, 47 + b - ah)], 2.4, "cloak", r_end=2.0)
-    s.blob(37, 48 + b - ah, 3, 3, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
-    claw(s, (37, 50 + b - ah), 1, "claw", n=4, length=5)
-    # the head: a wolf's, grey and long-muzzled, under the bonnet
-    hx, hy = 24 + l, 20 + b
-    # ears poke up through the bonnet (or stand free)
-    for side in (-1, 1):
-        s.poly([(hx + side * 4, hy - 6), (hx + side * 9, hy - 7), (hx + side * 8, hy - 15 - (2 if wolf else 0))],
-               "fur", grad=(3, 1))
-        s.poly([(hx + side * 5.5, hy - 7), (hx + side * 8, hy - 8), (hx + side * 7.5, hy - 12)], "mouth", tone=1,
-               outline=False)
-    for side in (-1, 1):   # a ruff of cheek fur, jagged
-        s.poly([(hx + side * 5, hy - 3), (hx + side * 11, hy + 1), (hx + side * 8.5, hy + 2.5), (hx + side * 11, hy + 5),
-                (hx + side * 7.5, hy + 6), (hx + side * 9, hy + 9), (hx + side * 4, hy + 8)], "fur", grad=(3, 1))
-    s.blob(hx, hy - 1, 8.5, 8, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
-    if not wolf:
-        # the frilled nightcap, tied under the chin
-        s.blob(hx, hy - 5, 11, 7, "veil", bands=(-0.25, 0.15, 0.6, 0.9, 0.98))
-        for k in range(9):
-            a = math.pi * (0.95 + k * 0.14)
-            s.blob(hx + math.cos(a) * 11, hy - 3 - math.sin(a) * -5, 1.6, 1.4, "veil", bands=(-0.2, 0.3, 0.7))
-        s.line([(hx - 7, hy + 1), (hx - 5, hy + 8)], "veil", 4, only_on=False)
-        s.line([(hx + 7, hy + 1), (hx + 5, hy + 8)], "veil", 4, only_on=False)
-    else:
-        # the bonnet torn off, hanging by its strings
-        s.blob(hx + 9, hy + 7, 4, 3, "veil", bands=(-0.25, 0.15, 0.6, 0.9))
-        s.line([(hx + 6, hy + 2), (hx + 8, hy + 5)], "veil", 4, only_on=False)
-        for k in range(5):   # rough fur on the crown
-            s.dot(hx - 5 + k * 2.5, hy - 8 - (k % 2), "fur", 4)
-    # the muzzle, long and grey, with a black nose; a grin full of teeth
-    gape = ([0, 1, 1, 0] if not wolf else [1, 2, 2, 3])[f]
-    s.blob(hx, hy + 5.5, 5.5, 4.8, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
-    s.line([(hx - 1, hy + 1), (hx - 0.5, hy + 3.5)], "fur", 4)
-    s.blob(hx, hy + 3.2, 2.4, 1.6, "mouth", bands=(-0.3, 0.3, 0.8))   # the nose
-    s.poly([(hx - 5, hy + 6), (hx + 5, hy + 6), (hx + 3.5, hy + 8 + gape), (hx - 3.5, hy + 8 + gape)], "mouth",
-           grad=(1, 0))
-    s.line([(hx - 5, hy + 6), (hx + 5, hy + 6)], "gum", 2)
-    for k in range(5):
-        tooth(s, hx - 4 + k * 2, hy + 6, 0.7, 1.8 + (0.8 if k in (0, 4) else 0))
+    s.limb([(29 + l, 27 + b), (35, 34 + b), (cx - 1, 38 + b)], 1.8, "cloak", r_end=1.5)
     for k in range(4):
-        tooth(s, hx - 3 + k * 2, hy + 8 + gape, 0.6, 1.4, down=False)
-    if wolf:
-        s.blob(hx, hy + 9 + gape, 1.6, 0.9, "tongue", bands=(-0.2, 0.4), outline=False)
-    # what big eyes -- behind little round spectacles
-    eye = "ffcf3f" if not wolf else "ff3b4d"
-    for side in (-1, 1):
-        ex, ey = hx + side * 3.4, hy - 1
-        s.blob(ex, ey, 1.9, 1.7, "teeth", bands=(-0.2, 0.3, 0.8), outline=False)
-        s.eye(ex, ey, 1.2, eye)
-        if not wolf or side < 0:   # the wolf has lost one lens
-            for k in range(16):
-                a = k * math.tau / 16
-                if k % 4 != 1:
-                    s.dot(ex + math.cos(a) * 2.7, ey + math.sin(a) * 2.5, "gold", 2)
-    if not wolf:
-        s.line([(hx - 0.6, hy - 1), (hx + 0.6, hy - 1)], "gold", 3, only_on=False)
-    s.line([(hx - 6, hy - 4), (hx - 3, hy - 6)], "fur", 4)
-
+        s.limb([(cx - 1.5, 37 + b + k * 1.1), (cx + 1.2, 37.5 + b + k * 1.1)], 0.5, "bone", r_end=0.4)
+    s.limb([(19 + l, 27 + b), (13, 37 + b), (12, 48 + ah)], 1.8, "cloak", r_end=1.5)
+    for k in range(4):
+        s.limb([(12, 48.5 + ah), (10.5 + k * 1.1, 54 + ah - abs(k - 1.5) * 0.6)], 0.5, "bone", r_end=0.3)
+    # the hood, tall and peaked, and the mask inside it
+    hx = 24 + l
+    s.blob(hx, 16 + b, 8.5, 11, "cloak", bands=(-0.3, 0.1, 0.65, 0.92, 0.99))
+    s.poly([(hx - 3, 7 + b), (hx + 3, 7 + b), (hx + 1, 1 + b)], "cloak", grad=(3, 1))
+    s.blob(hx, 17 + b, 6, 8, "mouth", bands=(9,), outline=False)                  # the dark inside the hood
+    s.blob(hx, 18 + b, 4.6, 6.4, "bone", bands=(-0.25, 0.1, 0.55, 0.86, 0.97))    # the mask
+    for side in (-1, 1):   # two thin slits, and the light it has stolen showing in them
+        s.poly([(hx + side * 1.0, 15 + b), (hx + side * 3.4, 15.5 + b), (hx + side * 3.2, 17 + b),
+                (hx + side * 1.0, 16.5 + b)], "mouth", tone=0, outline=False)
+        s.dot(hx + side * 2.2, 16 + b, "ff6a5a" if pale else "b8ff9a")
+    s.line([(hx, 19 + b), (hx, 23 + b)], "bone", 1)                                # a seam down the mask
+    s.line([(hx - 3, 13 + b), (hx - 1, 12 + b)], "bone", 5)
 
 # ---------------------------------------------------------------------------------------
 # details (the bigger render's finer touches)
@@ -430,19 +397,17 @@ def _witch_d(s, f, o):
         s.glints("wax", 0.1)
 
 
-def _grandmother_d(s, f, o):
-    s.fuzz("fur", 0.55, seed=4)
-    s.texture("fur", 0.14, -1, tones=(1, 2, 3), seed=7)
-    s.texture("cloak", 0.05, -1, tones=(2, 3), seed=3)
-    s.texture("veil", 0.06, +1, tones=(2, 3), seed=9)
-    s.glints("gold", 0.3)
-    s.glints("gum", 0.1)
+def _shepherd_d(s, f, o):
+    s.texture("cloak", 0.12, -1, tones=(1, 2, 3), seed=7)
+    s.fuzz("cloak", 0.3, seed=5, tone=0)
+    s.texture("bone", 0.08, -1, tones=(2, 3, 4), seed=3)
+    s.texture("wood", 0.12, -1, tones=(1, 2, 3), seed=9)
 
 
 INSECT_DESIGNS = {"firefly": firefly, "scorpion": scorpion, "stag": stag}
 INSECT_DETAILS = {"firefly": _firefly_d, "scorpion": _scorpion_d, "stag": _stag_d}
-DEMON_DESIGNS = {"marionette": marionette, "witch": witch, "grandmother": grandmother}
-DEMON_DETAILS = {"marionette": _marionette_d, "witch": _witch_d, "grandmother": _grandmother_d}
+DEMON_DESIGNS = {"marionette": marionette, "witch": witch, "shepherd": shepherd}
+DEMON_DETAILS = {"marionette": _marionette_d, "witch": _witch_d, "shepherd": _shepherd_d}
 
 # name, design, palette -- appended after the original sixteen (same column order as make_creatures.py)
 INSECTS = [
@@ -472,8 +437,8 @@ DEMONS = [
     ("BOG WITCH", "witch", _p(cloak="2a3224", skin="9aaa7c", hair="c8c8b8", wood="4a3424", glow="a8f070"), {}),
     ("CANDLE WITCH", "witch", _p(cloak="3a2a2c", skin="c8b8a0", hair="e8e0d0", wood="4a3424", wax="f0e6c8",
                                  glow="ffb040"), {"candles": True}),
-    ("GRANDMOTHER", "grandmother", _p(cloak="b4a6c8", veil="efe9e0", fur="8c867c", gum="c06070"), {}),
-    ("BIG BAD WOLF", "grandmother", _p(cloak="5e5670", veil="c8c0b8", fur="4c4852", gum="b0182c"), {"wolf": True}),
+    ("SHEPHERD", "shepherd", _p(cloak="23202c", bone="e6dcc4", wood="5a4030", glow="b8ff9a"), {}),
+    ("PALE SHEPHERD", "shepherd", _p(cloak="c8c0b4", bone="f4eee0", wood="4a3428", glow="ff7a5a"), {"pale": True}),
 ]
 
 

@@ -10,7 +10,8 @@ const SLOT := Vector2i(48, 48)
 const PIVOT := Vector2(24, 44)        ## in a slot: the point that stands on the ground
 const ATLAS := Vector2i(1024, 512)
 const RANGE := 17.0                   ## tiles from the camera's spot
-const LIFT := 1.6                     ## tiles a sprite is moved toward the camera
+const LIFT := 1.6                     ## (no longer used: see sprite3d_depth.gdshader)
+const DEPTH_SHADER: Shader = preload("res://shaders/sprite3d_depth.gdshader")
 var TOWARD_CAMERA := Vector3(0.0, sin(View3D.PITCH), cos(View3D.PITCH))
 
 var view: View3D
@@ -72,7 +73,7 @@ func update(targets: Array[Vector3]) -> void:
 		var pl: Player = h.player
 		if is_instance_valid(pl) and pl.visible:
 			# (you carry your own light: never a dark shape in your own lantern's glow)
-			cands.append([0.0, _paint_node.bind(pl), pl.position, false, 0.42, pl.get_instance_id()])
+			cands.append([0.0, _paint_node.bind(pl), pl.position, false, 0.42, pl.get_instance_id(), pl.climb_lift])
 		var comp: Companion = h.companion
 		if is_instance_valid(comp) and comp.alpha > 0.01:
 			cands.append([0.5, _paint_companion.bind(comp), comp.pos + Vector2(0, 16), false, 0.0, comp.get_instance_id()])
@@ -111,6 +112,9 @@ func update(targets: Array[Vector3]) -> void:
 		for c in fl.planted:
 			if near.has_point(c):
 				cands.append([1.0, _paint_flare, Vector2(c * 16), false, 0.0, "f%s" % c])
+		for c in fl.portals:
+			if near.has_point(c):
+				cands.append([1.0, _paint_portal, Vector2(c * 16), false, 0.0, "P%s" % c])
 	var fo: Forage = main.forage
 	if fo != null:
 		for c in fo.bushes:
@@ -164,12 +168,15 @@ func update(targets: Array[Vector3]) -> void:
 			continue
 		var c: Array = by_slot[i]
 		var foot := view.to3d(c[2])
+		var ground := foot
+		if c.size() > 6:
+			foot.y += float(c[6])   # climbing over a wall on a ladder
 		_jobs.append([i, c[1]])
 		var o := _slot_origin(i)
 		s.region_rect = Rect2(o, SLOT)
-		# stood a little toward the camera (it looks the same, just nearer), so
-		# a wall right in front hides only the feet -- as in the 2D view
-		var at := foot + TOWARD_CAMERA * LIFT
+		# the billboard stands on its feet; its depth is worked out per pixel as
+		# an upright figure's (sprite3d_depth.gdshader), so walls in front cover it
+		var at := foot
 		# Like Pokemon: one sprite pixel is exactly one screen pixel, near or
 		# far, square to the screen, its feet on a whole pixel.
 		var cm := view.camera_for(at)
@@ -179,12 +186,13 @@ func update(targets: Array[Vector3]) -> void:
 		var k := depth / View3D.DIST
 		s.scale = Vector3(k, k, k)
 		# its own drawn shading kept; just tinted by the light where it stands
-		s.modulate = Color.WHITE if not c[3] else view.light_at(foot)
+		s.modulate = Color.WHITE if not c[3] else view.light_at(ground)
 		s.visible = not fresh.has(i)   # (its slot is painted from the next frame on)
 		var w: float = c[4]
-		sh.visible = w > 0.0
+		var raised := c.size() > 6 and float(c[6]) > 0.15
+		sh.visible = w > 0.0 and not raised
 		if w > 0.0:
-			sh.position = foot + Vector3(0, 0.02, 0)
+			sh.position = ground + Vector3(0, 0.02, 0)
 			sh.scale = Vector3(w * 2.0, 1.0, w * 1.3)
 	_canvas.queue_redraw()
 
@@ -200,6 +208,11 @@ func _add_sprite() -> void:
 	s.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	s.double_sided = true
 	s.centered = true
+	# hidden by the world like an upright figure, not a card tilted back
+	var dm := ShaderMaterial.new()
+	dm.shader = DEPTH_SHADER
+	dm.set_shader_parameter("atlas", _vp.get_texture())
+	s.material_override = dm
 	# the slot's pivot on the ground: the slot is 48 px, its middle is 24 up
 	s.offset = Vector2(0, SLOT.y / 2.0 - (SLOT.y - PIVOT.y))
 	# upright, so seen from above it looks short: stretch it back to its true height
@@ -275,6 +288,10 @@ const PROPS_TEX: Texture2D = preload("res://assets/props.png")
 
 func _paint_flare(ci: CanvasItem, at: Vector2) -> void:
 	ci.draw_texture_rect_region(PROPS_TEX, Rect2(at, Vector2(16, 16)), Rect2(Flares.FLARE_INDEX * 16, 0, 16, 16))
+
+
+func _paint_portal(ci: CanvasItem, at: Vector2) -> void:
+	Flares.paint_portal(ci, at, Time.get_ticks_msec() / 1000.0)
 
 
 func _paint_floor(ci: CanvasItem, at: Vector2, t: String) -> void:

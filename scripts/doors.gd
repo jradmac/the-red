@@ -56,6 +56,12 @@ var section_depth := {}  # section id -> how many doors stand between it and the
 var key_spots := {}    # door cell -> where its key was put (for debugging/tests)
 var route_doors: Array[Vector2i] = []
 var wing_doors: Array[Vector2i] = []   ## doors that shut big side wings off the route
+var chests_ref: Chests
+## Set by main.gd: is this tile lit by anything -- anyone's lantern, a planted
+## flare, a candle? (Enemies.is_lit.) Light by the door is enough to pick its
+## lock, even with your own lantern out.
+var light_at: Callable
+var _clue_door := {}   ## player ("" or "p2_") -> the door a sprite pointed them to, until it opens
 var _rng := RandomNumberGenerator.new()
 # Depth-first search data (by tile index) used to find chokepoints.
 var _disc := PackedInt32Array()
@@ -544,6 +550,7 @@ func _door_sections(d: Vector2i) -> Array[int]:
 ## far enough out, otherwise hovering in a far dead end.
 func place_keys(chests: Chests, pk: Pickups) -> void:
 	pickups = pk
+	chests_ref = chests
 	var cells_of := {}   # section -> cells
 	for c in section_of:
 		var sec: int = section_of[c]
@@ -678,17 +685,26 @@ func try_open(c: Vector2i) -> void:
 		Sfx.play("door_locked")
 		dialog.say("A " + color.to_upper() + " LOCK. YOU NEED " + Items.with_article(key) + ".", key)
 		return
-	if puzzle.lantern != null and puzzle.lantern.state != Lantern.State.LIT and not puzzle.lantern.daylight:
+	var here := player.cell
+	var lit_by_door := func() -> bool:
+		return light_at.is_valid() and (light_at.call(c) or light_at.call(here))
+	var own := puzzle.lantern == null or puzzle.lantern.state == Lantern.State.LIT or puzzle.lantern.daylight
+	if not own and not lit_by_door.call():
 		Sfx.play("ui_deny")
-		dialog.say("TOO DARK TO SEE THE PINS. STRIKE A MATCH FIRST.", key)
+		dialog.say("TOO DARK TO SEE THE PINS. STRIKE A MATCH, OR LIGHT A FLARE BY THE DOOR.", key)
 		return
+	puzzle.other_light = lit_by_door
 	var h := Hero.bound
 	var on_done := func(success: bool) -> void:
 		if success:
 			if h != null:
 				Hero.bind_all(h)
 			_open(c, key)
-	puzzle.start(color, on_done)
+	# deeper doors: faster pins (measured on the door's deeper side)
+	var deep := progress(c)
+	for n in [c + Vector2i.UP, c + Vector2i.DOWN, c + Vector2i.LEFT, c + Vector2i.RIGHT]:
+		deep = maxf(deep, progress(n))
+	puzzle.start(color, on_done, deep)
 
 
 func _open(c: Vector2i, key: String) -> void:
@@ -738,6 +754,153 @@ func next_door(from: Vector2i) -> Vector2i:
 	if frontier.is_empty():
 		return Vector2i(-1, -1)
 	return frontier[0]
+
+
+# --- Clues (the sprites' riddles) ------------------------------------------------------
+## A sprite's clue always points at ONE door: the nearest locked door you can
+## walk up to that you can actually open (you hold its key, or one lies
+## within reach) -- or simply the nearest, if none. Once chosen it stays the
+## door for that player: ask again (for the door or for its key) and you're
+## shown the same one, until it's open.
+
+## Walking distance from `from` to every cell you can reach without opening a
+## door, and to every locked door at the edge of that.
+func _reach(from: Vector2i) -> Dictionary:
+	var dist := {from: 0}
+	var front := {}
+	var q: Array[Vector2i] = [from]
+	var head := 0
+	while head < q.size():
+		var c: Vector2i = q[head]
+		head += 1
+		for d in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+			var n: Vector2i = c + d
+			if dist.has(n) or front.has(n):
+				continue
+			if is_locked(n):
+				front[n] = dist[c] + 1
+			elif world.is_walkable(n):
+				dist[n] = dist[c] + 1
+				q.append(n)
+	return {"dist": dist, "front": front}
+
+
+func clue_door(from: Vector2i, who: String, inv: Inventory) -> Vector2i:
+	var r := _reach(from)
+	var front: Dictionary = r.front
+	var kept: Vector2i = _clue_door.get(who, Vector2i(-1, -1))
+	if kept.x >= 0 and is_locked(kept) and front.has(kept):
+		return kept
+	var best := Vector2i(-1, -1)
+	var best_any := Vector2i(-1, -1)
+	for d in front:
+		if best_any.x < 0 or front[d] < front[best_any]:
+			best_any = d
+		var color: String = doors[d].color
+		if inv.count_of(color + "_key") > 0 or _nearest_key(color, r).x >= 0:
+			if best.x < 0 or front[d] < front[best]:
+				best = d
+	if best.x < 0:
+		best = best_any
+	if best.x >= 0:
+		_clue_door[who] = best
+	return best
+
+
+## The way there on foot: the cells from `from` up to (and including) `goal`,
+## walking only through open ground. [] if there's no way.
+func path_to(from: Vector2i, goal: Vector2i) -> Array[Vector2i]:
+	var parent := {from: from}
+	var q: Array[Vector2i] = [from]
+	var head := 0
+	var found := false
+	while head < q.size() and not found:
+		var c: Vector2i = q[head]
+		head += 1
+		for d in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+			var n: Vector2i = c + d
+			if parent.has(n):
+				continue
+			if n == goal:
+				parent[n] = c
+				found = true
+				break
+			if world.is_walkable(n) and not is_locked(n):
+				parent[n] = c
+				q.append(n)
+	var path: Array[Vector2i] = []
+	if not found:
+		return path
+	var at := goal
+	while at != from:
+		path.push_front(at)
+		at = parent[at]
+	path.push_front(from)
+	return path
+
+
+## The Seer Stone's trail: the way to the same gate a sprite's clue would
+## name (clue_door), or to the master seal once no locked door is left in reach.
+func seer_path(from: Vector2i, who: String, inv: Inventory, master_gate: Vector2i) -> Array[Vector2i]:
+	var door := clue_door(from, who, inv)
+	if door.x >= 0:
+		return path_to(from, door)
+	if master_gate.x >= 0:
+		return path_to(from, master_gate)
+	return [] as Array[Vector2i]
+
+
+## Where to find a key for `door`: its own key if it's still where it was
+## hidden, else the nearest key of that colour within reach. (-1, -1) if none.
+func clue_key(door: Vector2i, from: Vector2i) -> Vector2i:
+	var color: String = doors[door].color
+	var r := _reach(from)
+	var own: Vector2i = key_spots.get(door, Vector2i(-1, -1))
+	if own.x >= 0 and _key_lies_at(own, color) and _reachable(own, r):
+		return own
+	return _nearest_key(color, r)
+
+
+func _key_lies_at(c: Vector2i, color: String) -> bool:
+	var id := color + "_key"
+	if pickups != null and pickups.ground.has(c) and pickups.ground[c].id == id:
+		return true
+	if chests_ref != null and chests_ref.chests.has(c):
+		for it in chests_ref.chests[c].items:
+			if it.id == id:
+				return true
+	return false
+
+
+## A chest counts as within reach if you can stand next to it.
+func _reachable(c: Vector2i, r: Dictionary) -> bool:
+	if r.dist.has(c):
+		return true
+	for d in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+		if r.dist.has(c + d):
+			return true
+	return false
+
+
+func _nearest_key(color: String, r: Dictionary) -> Vector2i:
+	var id := color + "_key"
+	var best := Vector2i(-1, -1)
+	var best_d := 1 << 30
+	var dist: Dictionary = r.dist
+	if pickups != null:
+		for c in pickups.ground:
+			if pickups.ground[c].id == id and dist.has(c) and dist[c] < best_d:
+				best = c
+				best_d = dist[c]
+	if chests_ref != null:
+		for c in chests_ref.chests:
+			if not _key_lies_at(c, color):
+				continue
+			for d in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+				if dist.has(c + d) and dist[c + d] + 1 < best_d:
+					best = c
+					best_d = dist[c + d] + 1
+	return best
 
 
 ## How deep a cell is: the number of locked doors between it and the start.

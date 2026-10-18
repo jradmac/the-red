@@ -153,7 +153,7 @@ func hero_tick() -> void:
 				opened = true
 				inv.consume("purple_key")
 				won.emit()
-		puzzle.start("purple", on_done)
+		puzzle.start("purple", on_done, 1.0)   # the deepest lock of all
 
 
 func _draw() -> void:

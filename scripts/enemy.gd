@@ -132,14 +132,14 @@ func walk_frame() -> int:
 
 
 ## The frame of the demon walk sheet, by how each kind moves (variant / 2):
-## 0 grinner, 3 hollow, 6 marionette, 7 witch, 8 grandmother: step left, step
-## right; 1 many-eyes: oozes, squash and
+## 0 grinner, 3 hollow, 6 marionette, 7 witch: step left, step right;
+## 1 many-eyes: oozes, squash and
 ## stretch every step; 4 maw: hops, crouch-spring-air-land every step;
-## 2 wraith, 5 weeper & bride: drift and glide all the time, slower when still.
+## 2 wraith, 5 weeper & bride, 8 shepherd: drift and glide all the time, slower when still.
 func demon_frame() -> int:
 	var g := variant / 2
 	match g:
-		2, 5:
+		2, 5, 8:
 			return int(_time * (6.0 if moving else 2.5) + variant) % 4
 		1, 4:
 			if moving or lunging:

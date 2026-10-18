@@ -44,8 +44,8 @@ const TYPES := {
 		{"name": "CUT MARIONETTE", "atk": [5, 5], "def": [3, 3], "hp": 8, "step": 0.3, "aggro": 8, "nature": "mirror", "rarity": 2.4, "tier": "UNCOMMON"},
 		{"name": "BOG WITCH", "atk": [5, 5], "def": [3, 3], "hp": 8, "step": 0.36, "aggro": 7, "nature": "contrary", "rarity": 2.0, "tier": "UNCOMMON"},
 		{"name": "CANDLE WITCH", "atk": [6, 6], "def": [3, 3], "hp": 9, "step": 0.34, "aggro": 8, "nature": "contrary", "rarity": 0.6, "tier": "RARE", "min_depth": 0.25},
-		{"name": "GRANDMOTHER", "atk": [7, 7], "def": [4, 4], "hp": 10, "step": 0.3, "aggro": 9, "nature": "punisher", "rarity": 0.12, "tier": "LEGENDARY", "min_depth": 0.3},
-		{"name": "BIG BAD WOLF", "atk": [8, 8], "def": [4, 4], "hp": 11, "step": 0.28, "aggro": 10, "nature": "desperate", "rarity": 0.035, "tier": "LEGENDARY", "min_depth": 0.5},
+		{"name": "SHEPHERD", "atk": [7, 7], "def": [4, 4], "hp": 10, "step": 0.3, "aggro": 9, "nature": "punisher", "rarity": 0.12, "tier": "LEGENDARY", "min_depth": 0.3},
+		{"name": "PALE SHEPHERD", "atk": [8, 8], "def": [4, 4], "hp": 11, "step": 0.28, "aggro": 10, "nature": "desperate", "rarity": 0.035, "tier": "LEGENDARY", "min_depth": 0.5},
 	],
 }
 
@@ -93,7 +93,7 @@ const EYES := {
 		[[Vector2(6, -4), Color("ffffff")], [Vector2(9, -4), Color("ffffff")]],
 		[[Vector2(7, -3), Color("a8f070")], [Vector2(9, -3), Color("a8f070")], [Vector2(15, -2), Color("a8f070")], [Vector2(14, -1), Color("a8f070")]],
 		[[Vector2(7, -3), Color("ffb040")], [Vector2(9, -3), Color("ffb040")], [Vector2(15, -2), Color("ffb040")], [Vector2(14, -1), Color("ffb040")]],
-		[[Vector2(5, -3), Color("ffcf3f")], [Vector2(10, -3), Color("ffcf3f")]],
-		[[Vector2(5, -3), Color("ff3b4d")], [Vector2(10, -3), Color("ff3b4d")]],
+		[[Vector2(14, -4), Color("b8ff9a")], [Vector2(5, -3), Color("b8ff9a")], [Vector2(7, -3), Color("b8ff9a")], [Vector2(14, -3), Color("b8ff9a")]],
+		[[Vector2(14, -4), Color("ff6a5a")], [Vector2(5, -3), Color("ff6a5a")], [Vector2(7, -3), Color("ff6a5a")], [Vector2(14, -3), Color("ff6a5a")]],
 	],
 }

@@ -923,13 +923,19 @@ def ruby_icon():
 
 def extend_items():
     """Adds the ruby (27) and the storm lantern (28) to assets/items.png."""
-    base = Image.open(OUT / "items.png").convert("RGBA")
-    base = base.crop((0, 0, 27 * 16, 16))
+    full = Image.open(OUT / "items.png").convert("RGBA")
+    base = full.crop((0, 0, 27 * 16, 16))
+    tail = full.crop((29 * 16, 0, full.width, 16)) if full.width > 29 * 16 else None   # the tools (29+)
     icons = [ruby_icon(), make_art.lantern_icon("5a6a7a", "333e4a", "d8ecff", "ffe08a", "f5a33a")]
     sheet = Image.new("RGBA", (base.width + 16 * len(icons), 16), (0, 0, 0, 0))
     sheet.paste(base, (0, 0))
     for i, ic in enumerate(icons):
         sheet.paste(ic, (base.width + i * 16, 0))
+    if tail is not None:
+        wide = Image.new("RGBA", (sheet.width + tail.width, 16), (0, 0, 0, 0))
+        wide.paste(sheet, (0, 0))
+        wide.paste(tail, (sheet.width, 0))
+        sheet = wide
     sheet.save(OUT / "items.png")
 
 

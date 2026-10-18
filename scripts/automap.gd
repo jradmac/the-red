@@ -30,6 +30,10 @@ var chests: Chests
 var doors: Doors
 var master_cell := Vector2i(-1, -1)
 var hints: Array[Vector2i] = []   ## spots a sprite revealed (blinking rings)
+## Set by main: step through to a portal flare (closes the map first).
+var travel: Callable
+const C_PORTAL := Color("b080ff")
+var _pick := -1               # choosing a portal flare to go to (its index), -1 = just looking
 var _canvas: Node2D
 var _blink := 0.0
 var _view := Vector2i.ZERO    # map tile at the center of the screen
@@ -56,13 +60,60 @@ func _process(delta: float) -> void:
 			Sfx.play("page")
 			player.ui_lock = "map"
 			_view = player.cell
+			_pick = -1
 		elif visible:
 			visible = false
 			player.ui_lock = ""
 	if visible:
 		_blink += delta
-		_pan(delta)
+		if _pick >= 0:
+			_choose_portal()
+		else:
+			_pan(delta)
+			if Input.is_action_just_pressed(pfx + "confirm") and not flares.portals.is_empty():
+				_pick = _nearest_portal()
+				_view = flares.portals[_pick]
+				Sfx.play("ui_select")
 		_canvas.queue_redraw()
+
+
+func _nearest_portal() -> int:
+	var best := 0
+	for i in flares.portals.size():
+		if (flares.portals[i] - _view).length_squared() < (flares.portals[best] - _view).length_squared():
+			best = i
+	return best
+
+
+## Picking a portal flare: arrows go from one to the next, Z steps through, X backs out.
+func _choose_portal() -> void:
+	var n := flares.portals.size()
+	if n == 0:
+		_pick = -1
+		return
+	_pick = mini(_pick, n - 1)
+	if Input.is_action_just_pressed(pfx + "move_right") or Input.is_action_just_pressed(pfx + "move_down"):
+		_pick = (_pick + 1) % n
+		Sfx.play("ui_move")
+	elif Input.is_action_just_pressed(pfx + "move_left") or Input.is_action_just_pressed(pfx + "move_up"):
+		_pick = (_pick + n - 1) % n
+		Sfx.play("ui_move")
+	elif Input.is_action_just_pressed(pfx + "run"):
+		_pick = -1
+		Sfx.play("ui_back")
+		return
+	elif Input.is_action_just_pressed(pfx + "confirm"):
+		var to: Vector2i = flares.portals[_pick]
+		if to == player.cell:
+			Sfx.play("ui_deny")
+			return
+		visible = false
+		player.ui_lock = ""
+		_pick = -1
+		if travel.is_valid():
+			travel.call(to)
+		return
+	_view = flares.portals[_pick]
 
 
 func _pan(delta: float) -> void:
@@ -90,7 +141,12 @@ func _draw_map() -> void:
 	PixelFont.draw(_canvas, Vector2(area.position.x - 2, 6), "MAP", C_TEXT)
 	var flare_text := "FLARES LEFT " + str(flares.count)
 	PixelFont.draw(_canvas, Vector2(area.end.x + 2 - PixelFont.width_of(flare_text), 6), flare_text, C_DIM)
-	PixelFont.draw(_canvas, Vector2(area.position.x - 2, screen.y - 9), "ARROWS PAN   M CLOSE", C_DIM)
+	var help := "ARROWS PAN   M CLOSE"
+	if _pick >= 0:
+		help = "PORTAL " + str(_pick + 1) + " OF " + str(flares.portals.size()) + "   ARROWS NEXT   Z GO THERE   X BACK"
+	elif not flares.portals.is_empty():
+		help = "ARROWS PAN   Z PORTAL FLARES   M CLOSE"
+	PixelFont.draw(_canvas, Vector2(area.position.x - 2, screen.y - 9), help, C_PORTAL if _pick >= 0 else C_DIM)
 
 	# Which map tiles fit, centered on _view and kept inside the labyrinth.
 	var cols := int(area.size.x / CELL)
@@ -146,6 +202,17 @@ func _draw_map() -> void:
 	for c in flares.planted:
 		if shown.has_point(c):
 			_canvas.draw_rect(Rect2(o + Vector2(c) * CELL, Vector2(CELL, CELL)), C_FLARE)
+	for i in flares.portals.size():
+		var c: Vector2i = flares.portals[i]
+		if not shown.has_point(c):
+			continue
+		_canvas.draw_rect(Rect2(o + Vector2(c) * CELL - Vector2.ONE, Vector2(CELL + 2, CELL + 2)), C_PORTAL)
+		if i == _pick:   # the one you'd go to: a turning ring
+			var rr := 5.0 + (1.0 if fmod(_blink, 0.5) < 0.25 else 0.0)
+			var ctr := o + Vector2(c) * CELL + Vector2(CELL, CELL) / 2.0
+			for k in 12:
+				var a := _blink * 2.5 + k * TAU / 12.0
+				_canvas.draw_rect(Rect2((ctr + Vector2(cos(a), sin(a)) * rr).round(), Vector2.ONE), Color("e0c8ff"))
 
 	# Villages you've been to: a warm glow and their name.
 	for v in world.villages:

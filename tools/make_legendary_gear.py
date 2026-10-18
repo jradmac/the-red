@@ -41,7 +41,7 @@ def _put(path, img, at, min_size):
 
 
 def small_hero_block():
-    """The four rows (down, up, left, right) x 9 frames of the wolfskin look."""
+    """The four rows (down, up, left, right) x 9 frames of the king's mantle look."""
     views = [("down", False, "down"), ("up", False, "up"), ("right", True, "left"), ("right", False, "right")]
     frames = {v: make_art.hero_frames(v) for v in ("down", "up", "right")}
     block = Image.new("RGBA", (16 * make_art.HERO_COLS, 24 * 4), (0, 0, 0, 0))
@@ -50,7 +50,7 @@ def small_hero_block():
             f = make_art._look_frame(grid, lg.SMALL_LOOK[1])
             if mirror:
                 f = f.transpose(Image.FLIP_LEFT_RIGHT)
-            block.paste(lg.ears_small(f, ears), (col * 16, row * 24))
+            block.paste(lg.crown_small(f, ears), (col * 16, row * 24))
     return block
 
 
@@ -81,7 +81,7 @@ def main():
         small = lg.small_axe(sheet.crop((col * 64, 0, col * 64 + 64, 64)))
         _put(A / "gear.png", small, (col * 16, 0), ((col + 1) * 16, 16))
         _put(A / "items.png", small, ((lg.EXTRA_ICON + k) * 16, 0), ((lg.EXTRA_ICON + k + 1) * 16, 16))
-    print("wrote the huntsman's axe and the wolfskin cloak into the gear, hero and item sheets")
+    print("wrote the warden's axe, the king's mantle and the extra weapons into the gear, hero and item sheets")
 
 
 if __name__ == "__main__":

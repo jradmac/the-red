@@ -364,3 +364,70 @@ def mantis(s, f):
 
 DESIGNS = {"beetle": beetle, "spider": spider, "moth": moth, "centipede": centipede, "tick": tick,
            "scarab": scarab, "wasp": wasp, "mantis": mantis}
+
+
+def detail(s, design, f):
+    """Finer touches only the bigger render has room for (pixel coordinates)."""
+    fn = DETAILS.get(design)
+    if fn:
+        fn(s, f)
+
+
+def _beetle_d(s, f):
+    s.texture("shell", 0.10, -1, tones=(2, 3), seed=2)
+    s.texture("shell", 0.05, +1, tones=(1, 2), seed=9)
+    s.fuzz("leg", 0.30)
+    s.glints("shell", 0.03)
+
+
+def _spider_d(s, f):
+    s.fuzz("leg", 0.55, seed=4)
+    s.fuzz("body", 0.50, seed=6)
+    s.texture("body", 0.18, +1, tones=(0, 1, 2), seed=3)
+    s.texture("leg", 0.12, +1, tones=(1, 2), seed=8)
+    s.glints("body", 0.02)
+
+
+def _moth_d(s, f):
+    s.texture("wing", 0.22, -1, tones=(2, 3, 4), seed=4)    # dusty scales
+    s.texture("wing", 0.08, +1, tones=(1, 2, 3), seed=12)
+    s.fuzz("wing", 0.45, seed=5, tone=3)                     # the frayed fringe
+    s.fuzz("fur", 0.7, seed=2, tone=3)
+    s.fuzz("body", 0.3, seed=7)
+
+
+def _centipede_d(s, f):
+    s.texture("body", 0.08, -1, tones=(2, 3), seed=3)
+    s.glints("body", 0.04)
+    s.fuzz("leg", 0.2)
+
+
+def _tick_d(s, f):
+    s.texture("body", 0.14, -1, tones=(2, 3, 4), seed=5)    # stretched, pored skin
+    s.glints("body", 0.05)
+    s.fuzz("leg", 0.45)
+    s.texture("plate", 0.15, -1, tones=(2, 3), seed=9)
+
+
+def _scarab_d(s, f):
+    s.texture("shell", 0.08, -1, tones=(2, 3), seed=6)
+    s.glints("shell", 0.04)
+    s.glints("mark", 0.08)
+    s.fuzz("leg", 0.35)
+
+
+def _wasp_d(s, f):
+    s.fuzz("body", 0.45, seed=3)
+    s.fuzz("leg", 0.4, seed=8)
+    s.texture("wing", 0.06, -1, tones=(2, 3, 4), seed=7)
+    s.glints("body", 0.03)
+
+
+def _mantis_d(s, f):
+    s.texture("wing", 0.10, -1, tones=(1, 2, 3), seed=6)
+    s.texture("body", 0.06, -1, tones=(2, 3), seed=4)
+    s.fuzz("arm", 0.35, seed=5, tone=4)                     # spines on the raptorial legs
+
+
+DETAILS = {"beetle": _beetle_d, "spider": _spider_d, "moth": _moth_d, "centipede": _centipede_d,
+           "tick": _tick_d, "scarab": _scarab_d, "wasp": _wasp_d, "mantis": _mantis_d}

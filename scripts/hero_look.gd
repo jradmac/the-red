@@ -1,7 +1,8 @@
 class_name HeroLook
 ## Draws the hero in layers: the weapon you carry (strapped to your back) and
-## a body that changes with your armor. Used by the overworld hero and the
-## battle screen.
+## a body that changes with your armor. draw() is the small overworld hero;
+## draw_big() is the detailed 64 x 96 one (tools/make_hero_big.py) for the
+## battle screen and the bag.
 
 const BODY_TEX: Texture2D = preload("res://assets/hero.png")
 const BODY_BLUE_TEX: Texture2D = preload("res://assets/hero_blue.png")   # the lantern burning blue
@@ -17,15 +18,41 @@ static func use(pl: Node) -> void:
 	p2 = pl != null and pl.get("p2") == true
 	blue_flame = pl != null and pl.get("lantern_blue") == true
 const GEAR_TEX: Texture2D = preload("res://assets/gear.png")
+const BIG_TEX: Texture2D = preload("res://assets/hero_big.png")
+const BIG_BLUE_TEX: Texture2D = preload("res://assets/hero_big_blue.png")
+const BIG_P2_TEX: Texture2D = preload("res://assets/hero_big_p2.png")
+const BIG_P2_BLUE_TEX: Texture2D = preload("res://assets/hero_big_p2_blue.png")
+const BIG_ARM_TEX: Texture2D = preload("res://assets/hero_big_arm.png")
+const GEAR_BIG_TEX: Texture2D = preload("res://assets/gear_big.png")
+const STRAPS_TEX: Texture2D = preload("res://assets/straps.png")          ## tools/make_straps.py
+const STRAPS_BIG_TEX: Texture2D = preload("res://assets/straps_big.png")
+const GEAR_SIDE_TEX: Texture2D = preload("res://assets/gear_side.png")       ## carried, seen from the side
+const GEAR_SIDE_BIG_TEX: Texture2D = preload("res://assets/gear_side_big.png")
+const BIG := Vector2(64, 96)              ## a big frame: the small one at 4x
+const BIG_SHOULDER := Vector2(45, 50)     ## the right shoulder, seen from behind, in a big frame
+const BIG_ARM := Vector2(16, 28)          ## an arm piece in hero_big_arm.png
+const BIG_ARM_SHOULDER := Vector2(8, 4)   ## its shoulder; the hand is 15 px below
+const BIG_GRIP := Vector2(10, 50)         ## where a hand holds a gear_big.png weapon
 ## Armor id -> look block in hero.png (4 rows of 3 frames each). "" = no armor.
-const LOOKS := {"": 0, "worn_cloak": 1, "leather_vest": 2, "chain_shirt": 3, "bone_mail": 4, "iron_plate": 5}
+const LOOKS := {"": 0, "worn_cloak": 1, "leather_vest": 2, "chain_shirt": 3, "bone_mail": 4, "iron_plate": 5,
+	"kings_mantle": 6}   ## (6: the legendary one, tools/legendary_gear.py)
 ## Weapon id -> column in gear.png.
-const WEAPONS := {"rusty_dagger": 0, "bone_club": 1, "hatchet": 2, "hooked_sickle": 3, "iron_mace": 4, "grave_blade": 5}
-## Where the weapon sits (frame pixels) for each facing: down, up, left, right.
-## Facing you, it's behind you (only the end pokes over your shoulder); from
-## behind it's strapped across your back; from the side it sticks out behind.
-const WEAPON_POS := [Vector2(-3, -1), Vector2(1, 2), Vector2(6, 2), Vector2(-6, 2)]
-const WEAPON_FLIP := [true, false, false, true]
+const WEAPONS := {"rusty_dagger": 0, "bone_club": 1, "hatchet": 2, "hooked_sickle": 3, "iron_mace": 4, "grave_blade": 5,
+	"wardens_axe": 6,   ## (6: the legendary one, tools/legendary_gear.py)
+	"pitchfork": 7, "cleaver": 8, "boar_spear": 9, "flail": 10, "silver_dagger": 11, "war_scythe": 12}   ## (7-12: everyday extras, legendary_gear.py EXTRA)
+## How the weapon is carried, for each facing (down, up, left, right): slung
+## across the back on a baldric, its grip up over the right shoulder and the
+## blade down towards the left hip, bound to the strap by two loops.
+## CARRY_OFF = the top-left of its gear box in the small frame (16 x 16 box),
+## CARRY_OFF_BIG in the big one (64 x 64 box). Facing you it's upside down
+## (grip up-left) behind you: the grip shows over your shoulder and the strap
+## crosses your chest. From behind it's turned round (grip up-right) and lies
+## across your back over the pack, bound by two loops. From the side it's the
+## steeper side-view sprite (gear_side*.png), grip up behind your head and the
+## blade down along your pack (mirrored facing right). tools/make_straps.py
+## draws the baldric and loops to match.
+const CARRY_OFF := [Vector2(-4, 3), Vector2(1, 5), Vector2(10, 2), Vector2(-10, 2)]
+const CARRY_OFF_BIG := [Vector2(-4, 20), Vector2(4, 20), Vector2(28, 12), Vector2(-28, 12)]
 
 
 ## `origin` = top-left of the 16x24 frame. `facing`: 0 down, 1 up, 2 left, 3 right.
@@ -48,8 +75,63 @@ static func draw(ci: CanvasItem, origin: Vector2, scale: float, facing: int, col
 				Rect2(src.position + part.position, part.size))
 	else:
 		ci.draw_texture_rect_region(tex, Rect2(at, Vector2(16, 24) * scale), src)
-	if has_weapon and in_front:
-		_weapon(ci, origin, scale, facing, WEAPONS[weapon], gear_off)
+	if has_weapon:
+		_straps(ci, STRAPS_TEX, at - Vector2(8, 8) * scale, 32.0, scale, facing, 0)
+		if in_front and not hide_arm:   # (swinging it: it's in your hand, not on your back)
+			_weapon(ci, origin, scale, facing, WEAPONS[weapon], gear_off)
+			_straps(ci, STRAPS_TEX, origin + (gear_off - Vector2(8, 8)) * scale, 32.0, scale, facing, 1)
+
+
+## The detailed hero, 64 x 96 with `origin` its top-left (feet at the bottom
+## middle, like the small frame at 4x). `facing`: 0 down, 1 up, 2 left, 3 right.
+## `body_bob`/`gear_off` are in pixels. `hide_arm`: from behind, leave the right
+## arm off (the battle draws it swinging; see big_arm_src()).
+static func draw_big(ci: CanvasItem, origin: Vector2, facing: int, armor: String, weapon: String,
+		body_bob: float = 0.0, gear_off := Vector2.ZERO, hide_arm := false) -> void:
+	var look: int = LOOKS.get(armor, 0)
+	var has_weapon := WEAPONS.has(weapon)
+	var in_front := facing == 1
+	if has_weapon and not in_front:
+		_weapon_big(ci, origin, facing, WEAPONS[weapon], gear_off)
+	var tex: Texture2D = (BIG_P2_BLUE_TEX if blue_flame else BIG_P2_TEX) if p2 else (BIG_BLUE_TEX if blue_flame else BIG_TEX)
+	var col := 4 if (hide_arm and facing == 1) else facing
+	var at := origin + Vector2(0, body_bob)
+	ci.draw_texture_rect_region(tex, Rect2(at, BIG), Rect2(Vector2(col, look) * BIG, BIG))
+	if has_weapon:
+		_straps(ci, STRAPS_BIG_TEX, at - Vector2(32, 32), 128.0, 1.0, facing, 0)
+		if in_front and not hide_arm:   # (swinging it: it's in your hand, not on your back)
+			_weapon_big(ci, origin, facing, WEAPONS[weapon], gear_off)
+			_straps(ci, STRAPS_BIG_TEX, origin + gear_off - Vector2(32, 32), 128.0, 1.0, facing, 1)
+
+
+## The right arm on its own (seen from behind), for the next hero: its shoulder
+## is at BIG_ARM_SHOULDER in the piece.
+static func big_arm_src(armor: String) -> Rect2:
+	return Rect2(Vector2(LOOKS.get(armor, 0) * BIG_ARM.x, BIG_ARM.y if p2 else 0.0), BIG_ARM)
+
+
+static func _weapon_big(ci: CanvasItem, origin: Vector2, facing: int, index: int, off: Vector2) -> void:
+	_slung(ci, GEAR_SIDE_BIG_TEX if facing >= 2 else GEAR_BIG_TEX, Rect2(index * 64, 0, 64, 64),
+		origin + CARRY_OFF_BIG[facing] + off, 64.0, facing)
+
+
+## A weapon box as carried for a facing, by exact pixel flips (no rotation):
+## upside down (facing you), turned round (from behind), the side sprite as it
+## is (facing left) or mirrored (facing right).
+static func _slung(ci: CanvasItem, tex: Texture2D, src: Rect2, p: Vector2, size: float, facing: int) -> void:
+	var flip: Vector2 = [Vector2(1, -1), Vector2(-1, -1), Vector2(1, 1), Vector2(-1, 1)][facing]
+	var at := p + Vector2(size if flip.x < 0 else 0.0, size if flip.y < 0 else 0.0)
+	ci.draw_set_transform(at, 0.0, flip)
+	ci.draw_texture_rect_region(tex, Rect2(Vector2.ZERO, Vector2(size, size)), src)
+	ci.draw_set_transform(Vector2.ZERO)
+
+
+## One layer of the straps (0 the baldric, 1 the loops) for a facing; `p` is the
+## cell's top-left, `cell` its size in the sheet, drawn at `scale`.
+static func _straps(ci: CanvasItem, tex: Texture2D, p: Vector2, cell: float, scale: float, facing: int, row: int) -> void:
+	if row == 1 and facing != 1:
+		return   # the loops only show from behind
+	ci.draw_texture_rect_region(tex, Rect2(p, Vector2(cell, cell) * scale), Rect2(facing * cell, row * cell, cell, cell))
 
 
 ## The body sheet for the next hero (player 2's clothes, a blue lantern).
@@ -81,12 +163,5 @@ static func draw_pose(ci: CanvasItem, hip: Vector2, up: float, legs: float, armo
 
 
 static func _weapon(ci: CanvasItem, origin: Vector2, scale: float, facing: int, index: int, off: Vector2) -> void:
-	var p: Vector2 = origin + (WEAPON_POS[facing] + off) * scale
-	var src := Rect2(index * 16, 0, 16, 16)
-	if WEAPON_FLIP[facing]:
-		# Mirror by drawing through a flipped transform.
-		ci.draw_set_transform(p + Vector2(16 * scale, 0), 0.0, Vector2(-1, 1))
-		ci.draw_texture_rect_region(GEAR_TEX, Rect2(Vector2.ZERO, Vector2(16, 16) * scale), src)
-		ci.draw_set_transform(Vector2.ZERO)
-	else:
-		ci.draw_texture_rect_region(GEAR_TEX, Rect2(p, Vector2(16, 16) * scale), src)
+	_slung(ci, GEAR_SIDE_TEX if facing >= 2 else GEAR_TEX, Rect2(index * 16, 0, 16, 16),
+		origin + (CARRY_OFF[facing] + off) * scale, 16.0 * scale, facing)

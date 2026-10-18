@@ -16,7 +16,15 @@ const DOORS_TEX: Texture2D = preload("res://assets/doors.png")
 const MASTER_TEX: Texture2D = preload("res://assets/master.png")
 const INSECTS_TEX: Texture2D = preload("res://assets/insects.png")
 const DEMONS_TEX: Texture2D = preload("res://assets/demons.png")
-const LONGMAN_TEX: Texture2D = preload("res://assets/longman.png")
+const LONGMAN_TEX: Texture2D = preload("res://assets/longman.png")   # the Wolf Man
+const CLOSEUP_TEX: Texture2D = preload("res://assets/wolfman_closeup.png")   # 4 x (160 x 128): two poses, two glints
+const INSECTS_BIG: Texture2D = preload("res://assets/insects_battle.png")   # 64 x 64 frames, as in battle
+const DEMONS_BIG: Texture2D = preload("res://assets/demons_battle.png")     # 64 x 96 frames
+const BAG_TEX: Texture2D = preload("res://assets/bag_icon.png")
+const BIG_CARD := Vector2(92, 50)          # the battle's move cards
+const C_ATTACK := Color("ff7a4a")
+const C_DEFEND := Color("6aa8ff")
+const C_DODGE := Color("b8f0c8")
 
 const C_TEXT := Color("e8dfc8")
 const C_DIM := Color("8a8299")
@@ -152,8 +160,11 @@ static func _match_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 
 ## The Longman waits at the edge of the light. Let it die and it comes.
 static func _ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
+	# The Wolf Man, up close. A face at the very edge of your light, barely
+	# there; the flame dies and in the dark it is suddenly all you can see;
+	# a match flares and it draws back.
 	var cx := a.get_center().x
-	var lp := Vector2(cx, a.position.y + 74)
+	var lp := Vector2(cx - 70, a.position.y + 74)
 	var fuel := 0.6
 	var dark := false
 	if lt >= 3.3 and lt < 3.7:
@@ -164,29 +175,39 @@ static func _ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void
 	var boost := 0.0
 	if lt >= 4.6:
 		boost = 26.0 * (1.0 - _k(lt, 4.6, 5.2))
-	_lantern(c, lp, Vector2(cx, a.position.y), fuel, t, 1.0, boost)
-	# where it stands: just outside the light, on the right, feet on the floor
-	var floor_y := a.position.y + 138.0
-	var edge := cx + 104.0
-	var near := cx + 34.0
-	var x := edge
-	var frame := 0 if fmod(t, 2.4) < 1.6 else 2   # standing, now and then tilting its head
-	var walk := int(t * 7.0) % 4
-	if lt >= 3.75 and lt < 3.9:
-		frame = 8                                   # it drops onto all fours
-	elif lt >= 3.9 and lt < 4.6:
-		x = lerpf(edge, near, _ease(_k(lt, 3.9, 4.55)))
-		frame = 9 + walk                            # and comes
-	elif lt >= 4.6 and lt < 5.5:
-		x = lerpf(near, edge, _ease(_k(lt, 4.62, 5.4)))
-		frame = 9 + walk                            # the light comes back: it backs away
-	# lit only as far as the light reaches it: at the edge, a pale shape in the dark
+	# where the face is and how big: waiting at the edge, then right on you
+	var far := Vector2(cx + 82, a.position.y + 70)
+	var near := Vector2(cx + 10, a.position.y + 78)
+	var sc := 1.0
+	var at := far
+	var pose := 0
+	if lt >= 3.7 and lt < 4.6:
+		var k := _ease_in(_k(lt, 3.7, 4.3))
+		at = far.lerp(near, k)
+		sc = lerpf(1.0, 2.0, k)
+		pose = 1
+	elif lt >= 4.6:
+		var k2 := 1.0 - _ease(_k(lt, 4.62, 5.4))
+		at = far.lerp(near, k2)
+		sc = lerpf(1.0, 2.0, k2)
+		pose = 1 if k2 > 0.5 else 0
+	else:
+		pose = 1 if fmod(t, 3.1) > 2.6 else 0          # now and then the head tilts
+	# how much of it the light shows
 	var r := (16.0 + 50.0 * fuel) + boost if fuel > 0.0 else 0.0
-	var seen := clampf(1.0 - (absf(x - cx) - r) / 60.0, 0.0, 1.0)
-	var col := Color(0.46, 0.43, 0.54).lerp(Color(1.0, 0.92, 0.82), seen * 0.8)
+	var seen := clampf(1.0 - (absf(at.x - lp.x) - r) / 70.0, 0.0, 1.0)
+	var col := Color(0.32, 0.29, 0.4).lerp(Color(1.0, 0.94, 0.86), seen)
 	if dark:
-		col = Color(0.55, 0.52, 0.6)
-	_longman(c, Vector2(x, floor_y), frame, x > cx, col)
+		col = Color(0.62, 0.58, 0.7)   # pale in the dark: it is all you can see
+	var breathe := roundf(sin(t * 1.7) * 1.0)
+	if dark and lt < 4.3:
+		breathe += roundf(sin(t * 60.0) * 1.0)   # it lunges
+	_closeup(c, at + Vector2(0, breathe), sc, pose, col, a)
+	# in the dark, the glint deep in the hole burns
+	if dark or lt < 3.3:
+		var ga := 1.0 if dark else 0.35 + 0.25 * sin(t * 2.3)
+		_closeup(c, at + Vector2(0, breathe), sc, pose + 2, Color(1.0, 0.97, 0.85, ga), a)
+	_lantern(c, lp, Vector2(lp.x, a.position.y), fuel, t, 1.0, boost)
 	if lt >= 4.6 and lt < 5.0:
 		var fk := _k(lt, 4.6, 5.0)
 		c.draw_circle(lp, 34.0 * (1.0 - fk) + 8.0, Color(1.0, 0.9, 0.7, 0.45 * (1.0 - fk)))
@@ -194,6 +215,20 @@ static func _ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void
 		_text_c(c, cx, a.end.y - 12, "THE LIGHT IS OUT", C_RED)
 	else:
 		_text_c(c, cx, a.end.y - 12, "SAFE INSIDE THE LIGHT", C_DIM)
+
+
+## The close-up portrait (frame 0/1: the face, 2/3: its glint) centred on
+## `center`, at an integer `scale` steps of 1 or 2 (in between it snaps), cut
+## off at the edges of the stage `a`.
+static func _closeup(c: CanvasItem, center: Vector2, scale: float, frame: int, col: Color, a: Rect2) -> void:
+	var s := 2.0 if scale >= 1.5 else 1.0
+	var size := Vector2(160, 128) * s
+	var dst := Rect2((center - size / 2.0).round(), size)
+	var clip := dst.intersection(a)
+	if clip.size.x <= 0.0 or clip.size.y <= 0.0:
+		return
+	var src := Rect2(Vector2(frame * 160, 0) + (clip.position - dst.position) / s, clip.size / s)
+	c.draw_texture_rect_region(CLOSEUP_TEX, clip, src, col)
 
 
 # --- 2. Flares and the map ----------------------------------------------------
@@ -297,7 +332,7 @@ static func _flare_ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -
 	var seen := clampf(1.0 - (absf(x - cx) - r) / 50.0, 0.0, 1.0)
 	var col := Color(0.3, 0.34, 0.36).lerp(Color(0.75, 1.0, 0.82), seen * 0.7)
 	_longman(c, Vector2(x, floor_y), frame, false, col)
-	_text_c(c, cx, a.end.y - 6, "FLARES HOLD THE LONGMAN BACK", C_DIM)
+	_text_c(c, cx, a.end.y - 6, "FLARES HOLD THE WOLF MAN BACK", C_DIM)
 
 
 # --- 3. Gates and keys --------------------------------------------------------
@@ -349,104 +384,185 @@ static func _keys_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 
 # --- 4. Creatures -------------------------------------------------------------
 
-## The things that live down here: insects and demons.
+## The things that live down here: insects and demons, as you'll see them up
+## close in a fight (the battle's own art).
 static func _creatures_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
-	var y := a.position.y + 62
-	# insects (16x16 frames, 4 rows of animation)
-	var gx := cx - 86
-	_glow(c, Vector2(gx, y), 54.0, LANTERN, 0.35)
-	var insects := [0, 2, 12]
+	var feet_y := a.position.y + 104
+	# insects (64 x 64 battle frames)
+	var gx := cx - 88
+	_glow(c, Vector2(gx, feet_y - 30), 62.0, LANTERN, 0.3)
+	var insects := [0, 12]
 	for i in insects.size():
-		var al := _k(t, 0.1 + i * 0.15, 0.4 + i * 0.15)
-		var p := Vector2(gx + (i - 1) * 34, y - absf(sin(t * 6.0 + i * 1.7)) * 2.0)
-		var fr := int(t * 5.0 + i) % 4
-		_tex(c, INSECTS_TEX, Rect2(insects[i] * 16, fr * 16, 16, 16), p, 2.0, Color(1, 1, 1, al))
-	_text_c(c, gx, y + 30, "INSECTS", C_GOLD)
-	_text_c(c, gx, y + 40, "IN LIGHT AND DARK", C_DIM)
-	# demons (16x24 frames)
-	var dx := cx + 86
-	_glow(c, Vector2(dx, y), 54.0, Color("ff5a6a"), 0.25)
-	var demons := [0, 4, 8]
+		var al := _k(t, 0.1 + i * 0.2, 0.45 + i * 0.2)
+		var fx := gx + (i * 2 - 1) * 36
+		UiKit.pedestal(c, Vector2(fx, feet_y - 2), 26, 5)
+		var fr: int = [0, 2][int(t * 2.0 + i) % 2]
+		c.draw_texture_rect_region(INSECTS_BIG, Rect2(Vector2(fx - 32, feet_y - 62 + roundf(sin(t * 3.0 + i) * 1.0)), Vector2(64, 64)),
+			Rect2(insects[i] * 64, fr * 64, 64, 64), Color(1, 1, 1, al))
+	_text_c(c, gx, feet_y + 6, "INSECTS", C_GOLD)
+	_text_c(c, gx, feet_y + 16, "IN LIGHT AND DARK", C_DIM)
+	# demons (64 x 96 battle frames)
+	var dx := cx + 88
+	_glow(c, Vector2(dx, feet_y - 44), 62.0, Color("ff5a6a"), 0.22)
+	var demons := [0, 8]
 	for i in demons.size():
-		var al2 := _k(t, 0.6 + i * 0.15, 0.9 + i * 0.15)
-		var p2 := Vector2(dx + (i - 1) * 34 + roundf(sin(t * 1.5 + i) * 1.0), y - 6)
-		var fr2 := int(t * 3.0 + i) % 4
-		_tex(c, DEMONS_TEX, Rect2(demons[i] * 16, fr2 * 24, 16, 24), p2, 2.0, Color(1, 1, 1, al2))
-	_text_c(c, dx, y + 30, "DEMONS", C_RED)
-	_text_c(c, dx, y + 40, "THEY HUNT BY NIGHT", C_DIM)
-	_key_line(c, Vector2(cx, a.end.y - 14), "SPACE", "CHARGE A DEMON IN YOUR LIGHT")
+		var al2 := _k(t, 0.6 + i * 0.2, 0.95 + i * 0.2)
+		var fx2 := dx + (i * 2 - 1) * 36
+		UiKit.pedestal(c, Vector2(fx2, feet_y - 2), 26, 5)
+		var fr2: int = [0, 2][int(t * 1.6 + i) % 2]
+		c.draw_texture_rect_region(DEMONS_BIG, Rect2(Vector2(fx2 - 32, feet_y - 94 + roundf(sin(t * 2.0 + i) * 1.0)), Vector2(64, 96)),
+			Rect2(demons[i] * 64, fr2 * 96, 64, 96), Color(1, 1, 1, al2))
+	_text_c(c, dx, feet_y + 6, "DEMONS", C_RED)
+	_text_c(c, dx, feet_y + 16, "THEY HUNT BY NIGHT", C_DIM)
+	_text_c(c, cx, a.end.y - 12, "TOUCH ONE - OR LET IT TOUCH YOU - AND THE FIGHT BEGINS", C_DIM)
 
 
-## The four moves you can pick each round of a fight.
+## The battle's move deck: three big cards, each with the number that matters
+## and what it costs you; your bag beneath them.
 static func _moves_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
-	var moves := ["attack", "defend", "dodge", "item"]
-	const CW := 46
-	const CH := 62
-	var total := 4 * CW + 3 * 10
-	for i in 4:
+	var moves := ["attack", "defend", "dodge"]
+	const GAP := 6.0
+	var total := 3 * BIG_CARD.x + 2 * GAP
+	var sel := int(lt) % 4    # attack, defend, dodge, then the bag
+	var y0 := a.position.y + 42
+	_text_c(c, cx, a.position.y + 6, "YOU BOTH CHOOSE IN SECRET...", C_DIM)
+	_text_c(c, cx, a.position.y + 16, "...THEN BOTH ARE REVEALED", C_DIM)
+	# the creature's tell, on its banner, like in a fight
+	var band := Rect2(24, y0 - 15, 312, 11)
+	c.draw_rect(band, Color(0.02, 0.01, 0.04, 0.78))
+	c.draw_rect(Rect2(band.position, Vector2(band.size.x, 1)), Color(C_GOLD, 0.45))
+	_text_c(c, cx, band.position.y + 2, "THE PALE SPIDER REARS BACK...", C_GOLD)
+	for i in 3:
 		var k := _ease(_k(t, 0.15 * i, 0.15 * i + 0.4))
-		var x := cx - total / 2.0 + i * (CW + 10)
-		var y := a.position.y + 34 + (1.0 - k) * 18.0
-		var hi := int(lt) % 4 == i and t > 1.0
-		if hi:
-			y -= 4.0
-		_card(c, Rect2(roundf(x), roundf(y), CW, CH), moves[i], true, k, hi)
-	_text_c(c, cx, a.position.y + 120, "YOU BOTH CHOOSE IN SECRET...", C_DIM)
-	_text_c(c, cx, a.position.y + 130, "...THEN BOTH ARE REVEALED", C_DIM)
+		var x := floorf(cx - total / 2.0 + i * (BIG_CARD.x + GAP))
+		var picked := sel == i and t > 1.0
+		var r := Rect2(Vector2(x, y0 + (1.0 - k) * 16.0 - (5.0 if picked else 0.0)), BIG_CARD)
+		_big_card(c, r, moves[i], picked, k, t)
+	# the bag, beneath
+	var br := Rect2(cx - 32, y0 + BIG_CARD.y + 10, 64, 14)
+	var on_bag := sel == 3 and t > 1.0
+	c.draw_rect(br.grow(1), Color("0a070f"))
+	c.draw_rect(br, C_GOLD if on_bag else Color("5a5170"))
+	c.draw_rect(br.grow(-1), Color("2a2038") if on_bag else Color("17121f"))
+	c.draw_texture_rect_region(BAG_TEX, Rect2(br.position + Vector2(3, -4), Vector2(16, 16)), Rect2(0, 0, 16, 16))
+	PixelFont.draw(c, br.position + Vector2(23, 4), "BAG", C_GOLD if on_bag else C_TEXT)
+	PixelFont.draw(c, Vector2(br.end.x - 4 - PixelFont.width_of("DOWN"), br.position.y + 4), "DOWN", C_DIM)
+	if on_bag:
+		_text_c(c, cx, br.end.y + 5, "DRINK A TONIC OR FLARE YOUR LANTERN: IT TAKES YOUR TURN", C_DIM)
 
 
-## Three clashes, one after another: attack/attack, defend/attack, dodge/attack.
+## One of the battle's move cards (as battle.gd draws them), with sample numbers:
+## your ATK 2, DEF 1 against a creature with ATK 3, DEF 1.
+static func _big_card(c: CanvasItem, r: Rect2, move: String, picked: bool, alpha: float, t: float) -> void:
+	var col: Color = {"attack": C_ATTACK, "defend": C_DEFEND, "dodge": C_DODGE}[move]
+	var pulse := 0.5 + 0.5 * sin(t * 6.0)
+	if picked:
+		_glow(c, r.get_center(), r.size.x * 0.62, col, 0.8 * alpha)
+	c.draw_rect(r.grow(1), Color(0.02, 0.01, 0.04, alpha))
+	c.draw_rect(r, Color(C_GOLD.lerp(col, 0.35 * pulse) if picked else col.darkened(0.5), alpha))
+	c.draw_rect(r.grow(-1), Color(Color("100b18"), alpha))
+	for i in 6:
+		c.draw_rect(Rect2(r.position + Vector2(1, 13 + i * 6), Vector2(r.size.x - 2, 6)),
+			Color(col, (0.09 - i * 0.012) * (1.6 if picked else 1.0) * alpha))
+	var head := Rect2(r.position + Vector2(1, 1), Vector2(r.size.x - 2, 12))
+	c.draw_rect(head, Color(col, (0.38 if picked else 0.16) * alpha))
+	var label := move.to_upper()
+	var name_col := col.lightened(0.35) if picked else col.darkened(0.1)
+	_big_text(c, head.position + Vector2(floorf((head.size.x - PixelFont.width_of(label) * 2) / 2.0), 1), label, Color(name_col, alpha))
+	var ib := Rect2(r.position + Vector2(4, 15), Vector2(32, 32))
+	c.draw_rect(ib.grow(1), Color(col.darkened(0.55), alpha))
+	c.draw_rect(ib, Color(Color("07050b"), alpha))
+	match move:
+		"attack": _icon(c, "hatchet", ib.get_center(), 2, alpha)
+		"defend": _icon(c, "leather_vest", ib.get_center(), 2, alpha)
+		"dodge": _dodge_icon(c, ib.get_center(), col, alpha)
+	var tx := r.position.x + 41
+	var lines: Array = {"attack": ["2", "ATK", "HITS FOR 2", "GUARDED: 1"],
+		"defend": ["1", "DEF", "IF HIT: -2", "NOT -3"],
+		"dodge": ["50%", "", "DODGED: -0", "ELSE: -3"]}[move]
+	_big_text(c, Vector2(tx, r.position.y + 16), lines[0], Color(C_TEXT if picked else C_TEXT.darkened(0.25), alpha))
+	if lines[1] != "":
+		PixelFont.draw(c, Vector2(tx + PixelFont.width_of(lines[0]) * 2 + 3, r.position.y + 21), lines[1], Color(col, alpha))
+	PixelFont.draw(c, Vector2(tx, r.position.y + 31), lines[2], Color(C_TEXT if picked else C_DIM, alpha))
+	PixelFont.draw(c, Vector2(tx, r.position.y + 39), lines[3], Color(C_DIM, alpha))
+	if not picked:
+		c.draw_rect(r, Color(0.02, 0.01, 0.04, 0.3 * alpha))
+
+
+static func _big_text(c: CanvasItem, pos: Vector2, text: String, col: Color) -> void:
+	c.draw_set_transform(pos.round(), 0.0, Vector2(2, 2))
+	PixelFont.draw(c, Vector2.ZERO, text, col, Color(0, 0, 0, col.a * 0.8))
+	c.draw_set_transform(Vector2.ZERO)
+
+
+## Three rounds as a fight shows them -- you (from behind) on the left, the
+## creature on its stone on the right, both cards flipping together, then the
+## blows: attack/attack, defend/attack, dodge/attack.
 static func _clash_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
 	var rnd := int(lt / 3.0)
 	var rt := fmod(lt, 3.0)
 	var yours: String = ["attack", "defend", "dodge"][rnd]
-	var top := a.position.y + 8
-	var lx := cx - 72
-	var rx := cx + 72
-	# who's who
-	_text_c(c, lx, top + 40, "YOU", C_GOLD)
-	var fr := int(t * 3.0) % 4
-	_tex(c, DEMONS_TEX, Rect2(2 * 16, fr * 24, 16, 24), Vector2(rx, top + 24), 2.0)
-	if rt < 0.9:
-		_text_c(c, rx, top + 2, "IT REARS BACK...", C_RED)
-	# the cards: face down, flip together, then the blows land
-	var flip := _k(rt, 0.6, 0.9)
+	var top := a.position.y
+	var hero_feet := Vector2(cx - 112, top + 122)
+	var foe_feet := Vector2(cx + 100, top + 96)
+	# the blows: both lunge in at 1.1s and spring back
+	var lunge := 0.0
+	if rt >= 0.95 and rt < 1.6:
+		lunge = sin(_k(rt, 0.95, 1.6) * PI)
+	var hit := rt >= 1.1 and rt < 1.4
+	var dodged := yours == "dodge" and int(t / 9.0) % 2 == 0
+	# the creature (it always attacks here)
+	UiKit.pedestal(c, foe_feet + Vector2(0, -2), 30, 6)
+	var fr: int = (int(t * 8.0) % 4) if lunge > 0.0 else [0, 2][int(t * 2.0) % 2]
+	var fp := foe_feet - Vector2(32, 96) + Vector2(-36, 22) * lunge
+	var shake_foe := roundf(sin(rt * 80.0) * 2.0) if hit and yours == "attack" else 0.0
+	c.draw_texture_rect_region(DEMONS_BIG, Rect2((fp + Vector2(shake_foe, 0)).round(), Vector2(64, 96)), Rect2(0, fr * 96, 64, 96))
+	# you, from behind
+	UiKit.pedestal(c, hero_feet + Vector2(0, -2), 30, 6)
+	var hp := hero_feet - Vector2(32, 96)
+	if yours == "attack":
+		hp += Vector2(30, -18) * lunge
+	elif yours == "dodge" and lunge > 0.0:
+		hp += Vector2(-18 if dodged else -4, 0) * lunge
+	var hurt := hit and _hurts(yours, 0) and not dodged
+	if hurt:
+		hp.x += roundf(sin(rt * 80.0) * 2.0)
+	HeroLook.draw_big(c, hp.round(), 1, "leather_vest", "hatchet")
+	if yours == "defend" and rt >= 1.0 and rt < 1.6:
+		c.draw_arc(hero_feet + Vector2(0, -48), 34.0, 0.0, TAU, 36, Color(C_DEFEND, 0.7 * (1.0 - _k(rt, 1.3, 1.6))), 2.0)
+	# the two cards between you, face down, then flipped together
+	var flip := _k(rt, 0.5, 0.8)
 	var sx := absf(cos(flip * PI))
 	var face := flip >= 0.5
 	for side in 2:
-		var x := lx if side == 0 else rx
+		var x := cx - 22 if side == 0 else cx + 22
 		var mv: String = yours if side == 0 else "attack"
-		var w := maxf(46.0 * sx, 2.0)
-		var shake := 0.0
-		var hit := rt >= 1.1 and rt < 1.4
-		if hit and _hurts(yours, side):
-			shake = roundf(sin(rt * 80.0) * 2.0)
-		_card(c, Rect2(roundf(x - w / 2.0 + shake), top + 50, roundf(w), 62), mv, face, 1.0, false)
-	_text_c(c, cx, top + 78, "VS", C_DIM)
+		var w := maxf(36.0 * sx, 2.0)
+		_card(c, Rect2(roundf(x - w / 2.0), top + 6, roundf(w), 50), mv, face, 1.0 - _k(rt, 1.0, 1.2) * 0.4, false)
+	_text_c(c, cx, top + 26, "VS", C_DIM)
 	# what happened
 	if rt >= 1.1:
-		var pk := _k(rt, 1.1, 1.9)
-		var lift := Vector2(0, -pk * 10.0)
+		var lift := -_k(rt, 1.1, 1.9) * 10.0
 		var al := 1.0 - _k(rt, 2.2, 2.8)
+		var hy := hero_feet.y - 100 + lift
 		match yours:
 			"attack":
-				_text_c(c, lx - 36, top + 78 + lift.y, "-5", Color(C_RED, al))
-				_text_c(c, rx + 36, top + 78 + lift.y, "-4", Color(C_RED, al))
+				_text_c(c, hero_feet.x, hy, "-3", Color(C_RED, al))
+				_text_c(c, foe_feet.x, foe_feet.y - 90 + lift, "-2", Color(C_RED, al))
 			"defend":
-				_text_c(c, lx - 36, top + 78 + lift.y, "-2", Color(Color("8ab8ff"), al))
+				_text_c(c, hero_feet.x, hy, "-2", Color(Color("8ab8ff"), al))
 			"dodge":
-				var missed := int(t / 9.0) % 2 == 0
-				_text_c(c, lx - 36, top + 78 + lift.y, "MISS!" if missed else "-5", Color(Color("8affb0") if missed else C_RED, al))
+				_text_c(c, hero_feet.x, hy, "MISS!" if dodged else "-3", Color(Color("8affb0") if dodged else C_RED, al))
 	if rt >= 1.0:
-		var lines := {
+		var lines: Dictionary = {
 			"attack": "ATTACK VS ATTACK: YOU BOTH TAKE A FULL HIT",
 			"defend": "DEFEND: ONLY ITS ATK MINUS YOUR DEF GETS THROUGH",
 			"dodge": "DODGE: A COIN FLIP - DODGE IT ALL, OR TAKE IT ALL",
 		}
-		_text_c(c, cx, top + 126, lines[yours], Color(C_TEXT, _k(rt, 1.0, 1.3)))
+		_text_c(c, cx, a.end.y - 12, lines[yours], Color(C_TEXT, _k(rt, 1.0, 1.3)))
 
 
 static func _hurts(yours: String, side: int) -> bool:
@@ -717,8 +833,8 @@ static func _card(c: CanvasItem, r: Rect2, move: String, face: bool, alpha: floa
 		return   # mid-flip: too narrow for the art
 	var ic := r.position + Vector2(r.size.x / 2.0, 26)
 	match move:
-		"attack": _icon(c, "grave_blade", ic, 2, alpha)
-		"defend": _icon(c, "iron_plate", ic, 2, alpha)
+		"attack": _icon(c, "hatchet", ic, 2, alpha)
+		"defend": _icon(c, "leather_vest", ic, 2, alpha)
 		"item": _icon(c, "healing_tonic", ic, 2, alpha)
 		"dodge": _dodge_icon(c, ic, col, alpha)
 	var label := move.to_upper()

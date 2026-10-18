@@ -446,31 +446,31 @@ WITCH = [
     "..KKK......KKK..",
     "................",
 ]
-GRANDMA = [
-    "...K........K...",
-    "..KhK......KhK..",
-    "..KhhKjjjjKhhK..",
-    "..KjjjjjjjjjjK..",
-    ".KjjjhhhhhhjjjK.",
-    ".KjjhZKhhKZhjjK.",
-    ".KjjhhhhhhhhjjK.",
-    "..KjhhhDDhhhjK..",
-    "..KjKTDDDDTKjK..",
-    "...KKTKTTKTKK...",
-    "..KjjjDDDDjjjK..",
-    ".KjjjjjjjjjjjjK.",
-    "KkkKjjjjjjjjKkkK",
-    "KhkKkkkkkkkkKkhK",
-    "KhkKkkmkkmkkKkhK",
-    "KTTKkkkkkkkkKTTK",
-    ".T.KkmkkkkmkK.T.",
-    "...KkkkkkkkkkK..",
-    "..KkkkkmkkkkkK..",
-    "..KkmkkkkkmkkkK.",
-    ".KjjjjjjjjjjjjK.",
-    ".KjKjKjKjKjKjK..",
-    "...KhhK..KhhK...",
-    "...KKKK..KKKK...",
+SHEPHERD = [
+    "......K.........",
+    ".....KkK......K.",
+    "....KkkkK....KoK",
+    "...KkkkkkK...K.K",
+    "...KkFFFkK...KZK",
+    "..KkFZFZFkK..KZK",
+    "..KkFFFFFkK...K.",
+    "..KkkFFFkkK...o.",
+    "...KkkkkkKK...o.",
+    "..KkkkkkkkhK..o.",
+    ".KkkkkkkkkkhKKF.",
+    ".KkKkkkkkkkkKFo.",
+    ".KFKkkkkkkkkK.o.",
+    "..F.Kkkkkkkkk.o.",
+    "....Kkkkkkkkk.o.",
+    "....Kkkkkkkkk.o.",
+    "...Kkkkkkkkkkko.",
+    "...Kkkkkkkkkkko.",
+    "...Kkkkkkkkkkko.",
+    "..Kkkkkkkkkkkkko",
+    "..KkkkkkkkkkkkKo",
+    "..KkKkKkKkKkKkKo",
+    "...K.K.K.K.K.K.o",
+    "................",
 ]
 
 
@@ -532,10 +532,10 @@ DEMONS = [
      st(5, 3, 8, 0.36, 7), "contrary"),
     ("CANDLE WITCH", WITCH, {"k": "3a2a2c", "h": "c8b8a0", "n": "e8e0d0", "O": "a89880", "Z": "ffb040"},
      st(6, 3, 9, 0.34, 8), "contrary"),
-    ("GRANDMOTHER", GRANDMA, {"k": "b4a6c8", "h": "8c867c", "j": "efe9e0", "m": "c06070"}, st(7, 4, 10, 0.30, 9),
-     "punisher"),
-    ("BIG BAD WOLF", GRANDMA, {"k": "5e5670", "h": "4c4852", "j": "c8c0b8", "Z": "ff3b4d"}, st(8, 4, 11, 0.28, 10),
-     "desperate"),
+    ("SHEPHERD", SHEPHERD, {"k": "23202c", "h": "3a3646", "F": "e6dcc4", "o": "5a4030", "Z": "b8ff9a"},
+     st(7, 4, 10, 0.30, 9), "punisher"),
+    ("PALE SHEPHERD", SHEPHERD, {"k": "c8c0b4", "h": "e0d8cc", "F": "f4eee0", "o": "4a3428", "Z": "ff6a5a"},
+     st(8, 4, 11, 0.28, 10), "desperate"),
 ]
 
 ## How often each creature turns up: its share among creatures of its kind
@@ -552,9 +552,9 @@ RARITY = {
     "GRINNER": 14.0, "PALE GRINNER": 4.5, "MANY-EYES": 12.0, "THOUSAND-EYES": 4.0, "WRAITH": 12.0,
     "ASH WRAITH": 4.0, "HOLLOW": 11.0, "HOLLOW KING": 1.8, "MAW": 9.0, "GRAVE MAW": 3.0, "WEEPER": 8.0,
     "BRIDE": 1.5, "MARIONETTE": 7.0, "CUT MARIONETTE": 2.4, "BOG WITCH": 2.0, "CANDLE WITCH": 0.6,
-    "GRANDMOTHER": 0.12, "BIG BAD WOLF": 0.035,
+    "SHEPHERD": 0.12, "PALE SHEPHERD": 0.035,
 }
-MIN_DEPTH = {"BIG BAD WOLF": 0.5, "GRANDMOTHER": 0.3, "CANDLE WITCH": 0.25, "HOLLOW KING": 0.2}
+MIN_DEPTH = {"PALE SHEPHERD": 0.5, "SHEPHERD": 0.3, "CANDLE WITCH": 0.25, "HOLLOW KING": 0.2}
 
 
 def tier(pct):
@@ -701,7 +701,7 @@ DEMON_RIG = {
     "weeper": {"hands": ((16, 18), (1, 4), (11, 14)), "skirt": (19, 22)},
     "marionette": {"hands": ((10, 14), (2, 4), (12, 15)), "legs": ((17, 23), (4, 7), (9, 12))},
     "witch": {"hands": ((13, 16), (0, 2), (13, 15)), "skirt": (17, 21)},
-    "grandmother": {"hands": ((12, 16), (0, 3), (12, 15)), "legs": ((22, 23), (3, 6), (9, 12)), "skirt": (17, 20)},
+    "shepherd": {"hands": ((10, 13), (1, 3), (12, 15)), "skirt": (16, 22)},
 }
 
 
@@ -806,7 +806,7 @@ def main():
                        (TICK, "tick"), (SCARAB, "scarab"), (WASP, "wasp"), (MANTIS, "mantis"),
                        (GRINNER, "grinner"), (MANY_EYES, "many_eyes"), (WRAITH, "wraith"), (HOLLOW, "hollow"),
                        (MAW, "maw"), (WEEPER, "weeper"), (FIREFLY, "firefly"), (SCORPION, "scorpion"),
-                       (STAG, "stag"), (MARIONETTE, "marionette"), (WITCH, "witch"), (GRANDMA, "grandmother")):
+                       (STAG, "stag"), (MARIONETTE, "marionette"), (WITCH, "witch"), (SHEPHERD, "shepherd")):
         DESIGN_OF[id(grid)] = name
     ins, ins_eyes = sheet(INSECTS, 16, 16, insect_frames)
     dem, dem_eyes = sheet(DEMONS, 16, 24, demon_frames)

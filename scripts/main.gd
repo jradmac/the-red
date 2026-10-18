@@ -42,6 +42,8 @@ var bombs: Bombs
 var chests: Chests
 var doors: Doors
 var flares: Flares
+var seer: SeerTrail        ## the Seer Stone's glowing trails
+var ladders: Ladders       ## ladders set against crypt walls
 var traps: Traps
 var _fx: Fx
 var stats: RunStats
@@ -64,15 +66,17 @@ func _ready() -> void:
 	var loading := _loading_screen()
 	await get_tree().process_frame
 	await get_tree().process_frame
-	# A saved run? Offer to pick it back up.
+	# The title screen (RED RIDING): press start, then pick a saved run back up
+	# or start a new one.
 	var save := SaveGame.load_data()
 	var autoload := OS.has_environment("SCYTHE_AUTOLOAD")   # tests: load without asking
 	if OS.has_environment("SCYTHE_NO_INTRO") and not autoload:
 		save = {}
-	if not save.is_empty() and not autoload:
+	var show_title := not autoload and (not OS.has_environment("SCYTHE_NO_INTRO") or OS.has_environment("SCYTHE_TITLE"))
+	if show_title:
 		var title := TitleScreen.new()
 		add_child(title)
-		title.setup(SaveGame.summary(save))
+		title.setup(SaveGame.summary(save) if not save.is_empty() else "", not save.is_empty())
 		var choice: String = await title.chosen
 		title.queue_free()
 		if choice == "new":
@@ -129,13 +133,15 @@ func _build(save: Dictionary = {}) -> void:
 
 	# Ground layers, drawn above the world but below the hero (in this order).
 	flares = Flares.new()
+	seer = SeerTrail.new()
+	ladders = Ladders.new()
 	doors = Doors.new()
 	chests = Chests.new()
 	pickups = Pickups.new()
 	wind = Wind.new()
 	master = MasterChamber.new()
 	forage = Forage.new()
-	for node in [wind, pickups, forage, chests, doors, master, flares]:
+	for node in [wind, pickups, forage, chests, doors, master, flares, ladders, seer]:
 		add_child(node)
 		move_child(node, world.get_index() + 1)
 	# Order matters: doors split the map first, the master gate goes in the
@@ -147,7 +153,11 @@ func _build(save: Dictionary = {}) -> void:
 	for d in doors.doors:
 		world.arches.erase(d)   # a door has its own frame
 	master.place_gate(world, doors)
+	ladders.setup(world)
+	ladders.master_gate = master.gate
+	ladders.area_of = func(c: Vector2i) -> int: return doors.section_of.get(c, -1)
 	flares.setup(world, h.player, lighting)
+	seer.setup(world, lighting)
 	chests.setup(world, h.player, h.inventory, h.lantern, flares, h.dialog)
 	pickups.setup(world, h.player, h.lantern, flares, h.inventory, chests, h.dialog)
 	chests.pickups = pickups
@@ -200,6 +210,7 @@ func _build(save: Dictionary = {}) -> void:
 	enemies = Enemies.new()
 	add_child(enemies)
 	enemies.setup(world, h.player, h.lantern, h.inventory, flares, doors, self, _eyes_layer)
+	doors.light_at = enemies.is_lit   # light by a door (a flare, anyone's lantern) is enough to pick its lock
 	enemies.day = day
 	enemies.hit_player.connect(_on_hit)
 	enemies.encounter.connect(_on_encounter)
@@ -225,7 +236,7 @@ func _build(save: Dictionary = {}) -> void:
 	day.dusk.connect(func() -> void: Sfx.play("dusk"))
 	day.eternal.connect(func() -> void: Sfx.play("eternal"))
 	day.dawn.connect(forage.regrow)
-	day.dawn.connect(func(): _announce_all("DAYBREAK", "THE DEMONS FLEE THE SUN, AND THE LONGMAN IS GONE. EXPLORE WHILE YOU CAN!", Color("ffe08a")))
+	day.dawn.connect(func(): _announce_all("DAYBREAK", "THE DEMONS FLEE THE SUN, AND THE WOLF MAN IS GONE. EXPLORE WHILE YOU CAN!", Color("ffe08a")))
 	day.dusk.connect(func(): _announce_all("NIGHTFALL", "LIGHT YOUR LANTERN. THE DARK IS AWAKE.", Color("b8a8ff")))
 	day.eternal.connect(func(): _announce_all("ETERNAL NIGHT", "THIS DEEP IN, THE SUN WILL NEVER RISE AGAIN.", Color("ff8a9a")))
 
@@ -258,6 +269,8 @@ func _build(save: Dictionary = {}) -> void:
 	add_child(view3d)
 	view3d.setup(self)
 	view3d.build()
+	seer.view = view3d
+	ladders.view = view3d
 
 	# The opening scene (every new run; ESC skips), or straight back in.
 	if OS.has_environment("SCYTHE_NO_INTRO") or not save.is_empty():
@@ -321,6 +334,24 @@ func _make_hero_ui(h: Hero) -> void:
 	inv.bomb_planter = func() -> String:
 		Hero.bind_all(h)
 		return bombs.plant()
+	# the tools
+	inv.seer_user = func() -> String:
+		Hero.bind_all(h)
+		var gate := master.gate if not master.opened else Vector2i(-1, -1)
+		var path := doors.seer_path(pl.cell, h.pfx, inv, gate)
+		if path.size() < 2:
+			return "!THE STONE STAYS DARK. THERE'S NO GATE LEFT FOR IT TO FIND."
+		seer.start(h.pfx, path)
+		Sfx.play("riddle", -2.0)
+		Sfx.play("sage", -6.0)
+		var to := "THE MASTER SEAL" if path[path.size() - 1] == master.gate else "THE NEAREST GATE"
+		return "THE STONE WAKES, GREEN AND COLD. DUST SPILLS FROM IT IN A GLOWING TRAIL ALONG THE GROUND -- ALL THE WAY TO " + to + "."
+	inv.portal_planter = func() -> String:
+		if pl.moving:
+			return "!STAND STILL TO PLANT IT."
+		return flares.plant_portal(pl.cell)
+	inv.ladder_placer = func() -> String:
+		return ladders.place(pl.facing_cell(), pl.cell)
 
 	h.hud = Hud.new()
 	add_child(h.hud)
@@ -335,6 +366,7 @@ func _make_hero_ui(h: Hero) -> void:
 	add_child(h.automap)
 	h.automap.setup(world, pl, flares, chests, doors)
 	h.automap.master_cell = master.gate
+	h.automap.travel = func(to: Vector2i) -> void: _travel(h, to)
 	h.bag = Bag.new()
 	h.bag.pfx = h.pfx
 	add_child(h.bag)
@@ -659,6 +691,23 @@ func _sun_of(h: Hero) -> float:
 	return 0.88 * clampf(h.lantern.sun_left / 4.0, 0.0, 1.0) * clampf((Lantern.SUN_TIME - h.lantern.sun_left) / 0.6, 0.0, 1.0)
 
 
+## A portal flare: you step into the map's violet flame and out of the one you picked.
+func _travel(h: Hero, to: Vector2i) -> void:
+	var pl := h.player
+	if not h.alive() or pl.climbing:
+		return
+	_fx.chest_burst(pl.position + Vector2(8, 6), true)   # a violet flare-up where you were...
+	pl.cell = to
+	pl.moving = false
+	pl.position = world.cell_to_position(to)
+	if h.companion != null:
+		h.companion.pos = pl.position + Vector2(10, -16)
+	_fx.chest_burst(pl.position + Vector2(8, 6), true)   # ...and where you come out
+	Sfx.play("flare_up", -4.0)
+	Sfx.play("whisper", -6.0)
+	h.hud.say("YOU STEP INTO THE VIOLET FLAME -- AND OUT OF ANOTHER.")
+
+
 ## One player's frame: their buttons, their light.
 func _hero_tick(h: Hero, delta: float) -> void:
 	var pl := h.player
@@ -676,6 +725,12 @@ func _hero_tick(h: Hero, delta: float) -> void:
 			_talk_to(h, villages.person_at(fc))
 		elif not villages.building_at_door(fc).is_empty():
 			h.interior.enter(world.village_at(fc), villages.building_at_door(fc))
+		elif ladders.ladders.has(fc):
+			var land := ladders.landing(fc, pl.cell)
+			if land.x >= 0:
+				pl.climb_over(fc, land)
+			else:
+				h.hud.say("SOMETHING BLOCKS THE OTHER SIDE.")
 	# Plant a bomb (B).
 	if Input.is_action_just_pressed(p + "bomb") and pl.can_act() and not h.battle.is_active():
 		var slot := -1
@@ -926,7 +981,7 @@ func _on_eaten(h: Hero) -> void:
 	var other := h.partner()
 	if other != null and other.alive():
 		Sfx.play("death", -4.0)
-		other.hud.announce("PLAYER " + ("2" if h.p2 else "1") + " IS GONE", "THE LONGMAN TOOK THEM. KEEP YOUR LIGHT.", Color("ff8a9a"))
+		other.hud.announce("PLAYER " + ("2" if h.p2 else "1") + " IS GONE", "THE WOLF MAN TOOK THEM. KEEP YOUR LIGHT.", Color("ff8a9a"))
 		drop_out(h, true)
 		return
 	for x in Hero.all:
@@ -935,7 +990,7 @@ func _on_eaten(h: Hero) -> void:
 		x.knocked_t = 0.0
 	_death_sound()
 	for x in Hero.all:
-		x.hud.show_death("THE LONGMAN TOOK YOU")
+		x.hud.show_death("THE WOLF MAN TOOK YOU")
 
 
 # --- Fights ---------------------------------------------------------------------------------
@@ -1121,14 +1176,24 @@ func _slay(e: Enemy) -> void:
 	var spot := e.cell
 	enemies.dissolve(e)
 	var dropped := {}
-	if e.kind == "demon":
+	var tier := String(e.info.get("tier", "COMMON"))
+	var leg_chance: float = Items.LEGENDARY_DROP if tier == "LEGENDARY" else (Items.RARE_DROP if tier == "RARE" else 0.0)
+	if enemies._rng.randf() < leg_chance:
+		dropped = {"id": Items.legendary_pick(enemies._rng), "qty": 1}   # the rarest things of all
+	elif tier == "LEGENDARY" or (tier == "RARE" and enemies._rng.randf() < 0.6):
+		dropped = Items.roll_stack(enemies._rng, maxf(0.8, world.progress.call(spot)))   # rare things carry rare things
+	elif e.kind == "demon":
 		dropped = Items.roll_stack(enemies._rng, world.progress.call(spot))
 	elif enemies._rng.randf() < 0.35:
 		dropped = {"id": "loose_match", "qty": 1}
 	if not dropped.is_empty() and not pickups.has_item_at(spot):
 		pickups.drop(spot, dropped)
 		if Hero.bound != null:
-			Hero.bound.hud.say("IT DROPPED SOMETHING.")
+			if Items.is_legendary(String(dropped.id)):
+				Hero.bound.hud.announce(String(Items.get_info(dropped.id).name), "IT LEFT SOMETHING LEGENDARY BEHIND.",
+					Color("ffd35a"))
+			else:
+				Hero.bound.hud.say("IT DROPPED SOMETHING.")
 
 
 ## F11 (or Alt+Enter) toggles fullscreen. (Needs the game in its own window,
@@ -1178,6 +1243,7 @@ func _reward(h: Hero, e: Enemy) -> void:
 		n = randi_range(2, 4) + int(round(depth * 4.0))
 	elif randf() < 0.45 + depth * 0.3:
 		n = 1 + (1 if randf() < depth else 0)
+	n += Enemies.rare_rubies(e)   # the rarer the creature, the richer
 	if n <= 0:
 		return
 	h.inventory.rubies += n
@@ -1216,4 +1282,4 @@ func _sleep_until_morning() -> void:
 				h.player.ui_lock = "interior" if h.interior.active else ""
 		_sleep_layer.queue_free()
 		_sleep_layer = null
-		_announce_all("GOOD MORNING", "YOU WAKE RESTED. THE SUN IS UP - THE DEMONS AND THE LONGMAN ARE GONE.", Color("ffe08a")))
+		_announce_all("GOOD MORNING", "YOU WAKE RESTED. THE SUN IS UP - THE DEMONS AND THE WOLF MAN ARE GONE.", Color("ffe08a")))

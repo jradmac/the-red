@@ -61,7 +61,10 @@ static func save(main: Node) -> bool:
 	d["lantern"] = {"fuel": lantern.fuel, "matches": lantern.matches, "max_fuel": lantern.max_fuel,
 		"max_radius": lantern.max_radius, "id": lantern.lantern_id, "lit": lantern.state == Lantern.State.LIT,
 		"blue": lantern.blue_left, "sun": lantern.sun_left}
-	d["flares"] = {"count": flares.count, "planted": flares.planted.duplicate()}
+	d["flares"] = {"count": flares.count, "planted": flares.planted.duplicate(), "portals": flares.portals.duplicate()}
+	var lad: Ladders = _child(main, Ladders)
+	if lad != null:
+		d["ladders"] = lad.save_list()
 	var open_doors: Array = []
 	for c in doors.doors:
 		if doors.doors[c].open:
@@ -141,6 +144,10 @@ static func apply(main: Node, d: Dictionary) -> void:
 	lantern.sun_left = l.sun
 	# flares
 	flares.restore(d.flares.planted, d.flares.count)
+	flares.restore_portals(d.flares.get("portals", []))
+	var lad: Ladders = _child(main, Ladders)
+	if lad != null:
+		lad.restore(d.get("ladders", []))
 	# doors
 	for c in d.doors:
 		if doors.doors.has(c):

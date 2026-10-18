@@ -498,6 +498,38 @@ def ashlar(w, h, pal, course=10, seed=1, moss=None):
     return img
 
 
+def soft_brick(w, h, pal, course=10, seed=1):
+    """Smooth dressed bricks in a running bond, the joints only a shade darker
+    than the stone: a calm wall that reads as bricks without deep black lines."""
+    img = Image.new("RGBA", (w, h))
+    rng = random.Random(seed)
+    joint = mix(pal["stone"], pal["mortar"], 0.45)
+    for r in range(h // course):
+        y0 = r * course
+        off = 8 if r % 2 else 0
+        for b in range(w // 16):
+            base = mix(pal["stone"], pal["stone_lt"], 0.1 + rng.random() * 0.4)
+            for dy in range(course):
+                for dx in range(16):
+                    px, py = (off + b * 16 + dx) % w, y0 + dy
+                    c = base
+                    if dy == course - 1 or dx == 15:
+                        c = joint
+                    elif dy == 0:
+                        c = mix(base, pal["stone_hi"], 0.22)
+                    elif dy == course - 2:
+                        c = shade(base, 0.93)
+                    if c == base and noise(px, py, seed) < 0.05:
+                        c = shade(c, 0.94)
+                    img.putpixel((px, py), c)
+    return img
+
+
+def softened(pal):
+    """The palette with its mortar pulled most of the way back to the stone."""
+    return dict(pal, mortar=mix(pal["cap"], pal["mortar"], 0.3))
+
+
 def capstone(w, h, pal, seed=2):
     """Long smooth slabs seen from above, bevelled bright on the lit side."""
     img = Image.new("RGBA", (w, h))
@@ -600,6 +632,31 @@ def needles(w, h, pal, seed=9):
 
 # --- Terrace ground and the little things growing on it ----------------------------------
 
+def cartoon(img, k=0.22):
+    """The cartoon block look: isolated speckle pixels melted into their
+    neighbours (a mode filter, applied across the tiling seams too), then a
+    gentle pull toward the average -- clean shapes, flat tones, the bevels kept."""
+    from PIL import ImageFilter
+    w, h = img.size
+    big = Image.new("RGBA", (w * 3, h * 3))
+    for i in range(3):
+        for j in range(3):
+            big.paste(img, (i * w, j * h))
+    big = big.convert("RGB").filter(ImageFilter.ModeFilter(3)).convert("RGBA")
+    return soften(big.crop((w, h, 2 * w, 2 * h)), k)
+
+
+def soften(img, k=0.4):
+    """Pull every pixel part way toward the texture's average colour: the same
+    pattern, quieter, so big areas of it read as calm ground."""
+    px = list(img.getdata())
+    n = len(px)
+    avg = tuple(sum(p[i] for p in px) // n for i in range(3))
+    out = Image.new("RGBA", img.size)
+    out.putdata([tuple(int(p[i] + (avg[i] - p[i]) * k) for i in range(3)) + (p[3],) for p in px])
+    return out
+
+
 def flagstones(w, h, base, lt, dk, gap, moss, seed=101, broken=0.25):
     """Old paving seen from above: irregular slabs, cracked, moss in the joints,
     some slabs missing (earth showing)."""
@@ -664,7 +721,7 @@ def meadow(w, h, grass, grass_lt, grass_dk, flowers, seed=103):
                 c = grass_lt
             img.putpixel((x, y), c)
     rng = random.Random(seed)
-    for k in range(w * h // 40):
+    for k in range(w * h // 110):
         x, y = rng.randrange(w), rng.randrange(h)
         f = rng.choice(flowers)
         img.putpixel((x, y), f)
@@ -742,25 +799,182 @@ def hanging(w, h, leaf, leaf_lt, leaf_dk, seed=120):
     return img
 
 
+
+# --- The crypt walls: moss-capped stone (chosen from four looks) ---------------------
+# Soft grey-violet dressed stone, worn at the edges. Moss grows in cushions --
+# scalloped clumps lit on their upper side with a dark line beneath -- gathered
+# in patches. Four capstone textures carry more and more moss; the world picks
+# one per tile from a slow noise, so moss runs in damp stretches instead of
+# repeating. The faces get moss creeping down from the top and up from the floor.
+
+CRYPT_STONE = ["1e1a26", "2c2738", "3d374b", "4f485e", "625a70", "776f84"]
+CRYPT_MOSS = ["0f1712", "162219", "1e2e21", "283c2a", "334a33", "425a3d", "53704a"]
+
+
+def _np_noise(w, h, scale, seed):
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    gw, gh = max(1, int(round(w / scale))), max(1, int(round(h / scale)))
+    g = rng.random((gh, gw))
+    ys, xs = np.mgrid[0:h, 0:w]
+    fx, fy = xs / w * gw, ys / h * gh
+    x0, y0 = np.floor(fx).astype(int), np.floor(fy).astype(int)
+    tx, ty = fx - x0, fy - y0
+    tx, ty = tx * tx * (3 - 2 * tx), ty * ty * (3 - 2 * ty)
+    x1, y1 = (x0 + 1) % gw, (y0 + 1) % gh
+    x0, y0 = x0 % gw, y0 % gh
+    a = g[y0, x0] * (1 - tx) + g[y0, x1] * tx
+    b = g[y1, x0] * (1 - tx) + g[y1, x1] * tx
+    return a * (1 - ty) + b * ty
+
+
+def _np_fbm(w, h, seed, scales=(8, 4, 2), weights=(0.55, 0.3, 0.15)):
+    return sum(_np_noise(w, h, sc, seed + i) * wt for i, (sc, wt) in enumerate(zip(scales, weights)))
+
+
+def _pick(ramp, v):
+    import numpy as np
+    cols = [np.array(hx(c)[:3], float) for c in ramp]
+    i = np.clip((v * len(cols)).astype(int), 0, len(cols) - 1)
+    out = np.zeros(v.shape + (3,))
+    for k, c in enumerate(cols):
+        out[i == k] = c
+    return out
+
+
+def _to_img(arr, alpha=None):
+    import numpy as np
+    a = np.clip(arr, 0, 255).astype(np.uint8)
+    al = np.full(a.shape[:2] + (1,), 255, np.uint8) if alpha is None else alpha[..., None].astype(np.uint8) * 255
+    return Image.fromarray(np.concatenate([a, al], 2), "RGBA")
+
+
+def moss_cushions(w, h, cover, seed, mask_fn=None):
+    """Moss clumps gathered into patches. Returns (covered mask, colours)."""
+    import numpy as np, math
+    patch = _np_fbm(w, h, seed, (6, 3, 2), (0.7, 0.2, 0.1))
+    rng = np.random.default_rng(seed)
+    m = np.zeros((h, w), bool)
+    col = np.zeros((h, w, 3))
+    clumps = []
+    for k in range(int(w * h * max(cover, 0.05) / 4)):
+        x, y = int(rng.integers(0, w)), int(rng.integers(0, h))
+        if patch[y, x] < 1 - cover * 1.1:
+            continue
+        if mask_fn is not None and not mask_fn(x, y):
+            continue
+        clumps.append((y, x, int(rng.choice([2, 2, 3, 3, 4]))))
+    clumps.sort()
+    pal = CRYPT_MOSS
+    for (cy, cx, r) in clumps:
+        tone = rng.random() * 0.2
+        for dy in range(-r - 1, r + 2):
+            for dx in range(-r - 1, r + 2):
+                d = math.hypot(dx, dy)
+                rr = r + 0.5 * math.sin(math.atan2(dy, dx) * 5 + cx)
+                if d > rr + 0.5:
+                    continue
+                x, y = (cx + dx) % w, (cy + dy) % h
+                if d > rr - 0.6 and dy >= 0:
+                    c = 0.02
+                elif dx + dy < -r * 0.6:
+                    c = 0.8 + tone
+                elif dx + dy > r * 0.5:
+                    c = 0.28 + tone
+                else:
+                    c = 0.5 + tone
+                m[y, x] = True
+                col[y, x] = np.array(hx(pal[min(len(pal) - 1, int(c * len(pal)))])[:3], float)
+    return m, col
+
+
+def crypt_cap(cover, seed):
+    import numpy as np
+    w, h = 32, 16
+    ys, xs = np.mgrid[0:h, 0:w]
+    rng = np.random.default_rng(seed)
+    # slabs of uneven length, two courses
+    cuts = {0: sorted(rng.choice(range(5, 28), 1, replace=False).tolist()), 1: sorted(rng.choice(range(3, 30), 2, replace=False).tolist())}
+    joint = (ys % 8) == 7
+    for row, cs in cuts.items():
+        for cx in cs:
+            joint |= (xs == cx) & (ys // 8 == row)
+    lit_edge = ((ys % 8) == 0) | np.isin(xs, [c + 1 for cs in cuts.values() for c in cs])
+    v = 0.36 + _np_fbm(w, h, seed + 1) * 0.36 - joint * 0.3 + lit_edge * 0.1
+    col = _pick(CRYPT_STONE, np.clip(v, 0, 0.999))
+    pits = _np_noise(w, h, 1.2, seed + 2) > 0.9
+    col[pits & ~joint] *= 0.8
+    m, mc = moss_cushions(w, h, cover, seed + 3)
+    rim = (~m) & (np.roll(m, -1, 0) | np.roll(m, 1, 1))
+    col[rim] *= 0.6
+    col[m] = mc[m]
+    # moss creeping along the joints even where there's no cushion
+    jm = joint & (_np_noise(w, h, 3, seed + 4) > 1 - cover * 1.3)
+    col[jm & ~m] = np.array(hx(CRYPT_MOSS[2])[:3], float)
+    return _to_img(col)
+
+
+def crypt_face(seed, heavy):
+    import numpy as np
+    w, h = 32, 30
+    ys, xs = np.mgrid[0:h, 0:w]
+    course = 10
+    off = ((ys // course) * 7) % 16
+    joint = ((ys % course) == course - 1) | (((xs + off) % 16) == 15)
+    v = 0.3 + _np_fbm(w, h, seed) * 0.34 - joint * 0.28 + ((ys % course) == 0) * 0.1
+    col = _pick(CRYPT_STONE, np.clip(v, 0, 0.999))
+    # moss: cushions near the top (spilling from the cap) and near the floor (damp)
+    reach_top = 7 + heavy * 6
+    reach_bot = 6 + heavy * 5
+    m, mc = moss_cushions(w, h, 0.55 + heavy * 0.25, seed + 5,
+        lambda x, y: y < reach_top or y > h - reach_bot)
+    col[m] = mc[m]
+    jm = joint & (_np_noise(w, h, 3, seed + 6) > 0.55 - heavy * 0.15)
+    col[jm & ~m] = np.array(hx(CRYPT_MOSS[2])[:3], float)
+    return _to_img(col)
+
+
+def crypt_lip(seed):
+    import numpy as np
+    w, h = 16, 4
+    v = np.tile(np.linspace(0.78, 0.36, h)[:, None], (1, w))
+    col = _pick(CRYPT_STONE, v)
+    rng = np.random.default_rng(seed)
+    for x in range(w):
+        if rng.random() < 0.55:
+            for y in range(int(rng.integers(1, 4))):
+                col[y, x] = np.array(hx(CRYPT_MOSS[4 if y == 0 else 2])[:3], float)
+    return _to_img(col)
+
+
+def moss_tex(seed):
+    import numpy as np
+    w = h = 32
+    m, mc = moss_cushions(w, h, 1.6, seed)
+    base = _pick(CRYPT_MOSS, np.full((h, w), 0.2))
+    base[m] = mc[m]
+    return _to_img(base)
+
+
 def build():
-    save(ashlar(32, 30, CRYPT, 10, 11, moss=hx("2f4a38")), "crypt_side")
-    save(capstone(32, 16, CRYPT, 12), "crypt_cap_top")
-    save(cap_side(16, 4, CRYPT, 13), "crypt_cap_side")
-    save(ivy_top(32, 32, CRYPT, 14), "crypt_mass")
+    save(soft_brick(32, 30, CRYPT, 10, 11), "crypt_side")
+    save(cartoon(capstone(32, 16, softened(CRYPT), 12)), "crypt_cap_top")
+    save(cap_side(16, 4, softened(CRYPT), 13), "crypt_cap_side")
+    save(soften(ivy_top(32, 32, CRYPT, 14), 0.3), "crypt_mass")
 
-    save(ashlar(32, 30, COURT, 10, 21, moss=hx("5a6a3a")), "court_side")
-    save(capstone(32, 16, COURT, 22), "court_cap_top")
-    save(cap_side(16, 4, COURT, 23), "court_cap_side")
-    save(ivy_top(32, 32, COURT, 24), "court_mass")
+    save(soft_brick(32, 30, COURT, 10, 21), "court_side")
+    save(cartoon(capstone(32, 16, softened(COURT), 22)), "court_cap_top")
+    save(cap_side(16, 4, softened(COURT), 23), "court_cap_side")
+    save(soften(ivy_top(32, 32, COURT, 24), 0.3), "court_mass")
 
-    save(strata(32, 32, ROCK, 31), "rock_side")
-    save(rubble(32, 32, ROCK, 32, grass=hx("6a8a4a"), grass_amt=0.18), "rock_top")
+    save(cartoon(strata(32, 32, ROCK, 31)), "rock_side")
+    save(soften(rubble(32, 32, ROCK, 32, grass=hx("6a8a4a"), grass_amt=0.18), 0.35), "rock_top")
 
     save(strata(32, 16, EARTH, 41, lip=hx("4a7a3a")), "earth_side")
     save(strata(32, 16, SWAMP_EARTH, 42, lip=hx("4a6a2e")), "swamp_side")
-    save(strata(32, 16, CRYPT_EARTH, 43), "cryptstep_side")
-    save(strata(32, 16, COURT_EARTH, 44), "courtstep_side")
-    save(strata(32, 16, ROCK, 45, lip=hx("8a7862")), "mtn_side")
+    save(cartoon(strata(32, 16, CRYPT_EARTH, 43)), "cryptstep_side")
+    save(cartoon(strata(32, 16, COURT_EARTH, 44)), "courtstep_side")
+    save(cartoon(strata(32, 16, ROCK, 45, lip=hx("8a7862"))), "mtn_side")
 
     save(leaf_clumps(32, 32, FOREST, 51), "leaves")
     save(leaf_clumps(32, 32, SWAMP, 52), "swamp_leaves")
@@ -798,13 +1012,13 @@ def build():
     save(clay(16, 16), "clay")
     save(planks(16, 16, dict(wood=hx("4a2c18"), wood_lt=hx("6a4024"), wood_dk=hx("2a180c")), 99, True), "house_door")
     # terrace ground, per landscape
-    save(flagstones(32, 32, hx("8a7e70"), hx("a6988a"), hx("524840"), hx("3e3630"), hx("5a6a3a"), 131, 0.15), "rock_slab")
-    save(gravel(32, 32, hx("85786d"), hx("b0a292"), hx("4a4038"), 132), "scree")
-    save(flagstones(32, 32, hx("4a4258"), hx("5e5670"), hx("221e2b"), hx("1c1824"), hx("2c4a34"), 133, 0.3), "crypt_paving")
-    save(gravel(32, 32, hx("3e3648"), hx("5a5268"), hx("1c1824"), 134), "crypt_rubble")
-    save(flagstones(32, 32, hx("a89a80"), hx("c4b698"), hx("6a5e4a"), hx("5a5040"), hx("5a7a3a"), 135, 0.2), "court_paving")
-    save(meadow(32, 32, hx("5a7a3a"), hx("7a9a4a"), hx("3a5428"), [hx("e8d050"), hx("e86060"), hx("f0f0f0"), hx("b080e0")], 136), "court_meadow")
-    save(meadow(32, 32, hx("4a6a3a"), hx("6a8a48"), hx("2e4426"), [hx("f0f0f0"), hx("c090e8"), hx("e8d050")], 137), "alpine_meadow")
+    save(soften(rubble(32, 32, ROCK, 131), 0.5), "rock_slab")
+    save(soften(gravel(32, 32, hx("85786d"), hx("a09284"), hx("6a5e52"), 132), 0.45), "scree")
+    save(soften(flagstones(32, 32, hx("4a4258"), hx("5e5670"), hx("221e2b"), hx("1c1824"), hx("2c4a34"), 133, 0.3), 0.35), "crypt_paving")
+    save(soften(gravel(32, 32, hx("3e3648"), hx("4e4660"), hx("2a2434"), 134), 0.45), "crypt_rubble")
+    save(soften(flagstones(32, 32, hx("a89a80"), hx("c4b698"), hx("6a5e4a"), hx("5a5040"), hx("5a7a3a"), 135, 0.2), 0.35), "court_paving")
+    save(soften(meadow(32, 32, hx("5e7042"), hx("6e7e4c"), hx("4a5a36"), [hx("d8c860"), hx("d07060")], 136), 0.3), "court_meadow")
+    save(soften(meadow(32, 32, hx("4a6a3a"), hx("5e7e44"), hx("3a5630"), [hx("d8d8d0"), hx("b8a0d0")], 137), 0.3), "alpine_meadow")
     # things that grow on the terraces (cut out, upright)
     save(tuft(16, 16, hx("8a9a4a"), hx("b8c070"), hx("5a6a30"), 141), "tuft_dry")
     save(tuft(16, 16, hx("4a8a3a"), hx("7ab858"), hx("2a5228"), 142), "tuft_green")
@@ -814,6 +1028,9 @@ def build():
     save(hanging(16, 24, hx("2c4a34"), hx("3f6646"), hx("1a2e20"), 151), "ivy_hang")
     save(hanging(16, 24, hx("4a6a36"), hx("6a8a48"), hx("2c4420"), 152), "vine_hang")
     save(hanging(16, 24, hx("6a7a3a"), hx("8a9a4a"), hx("4a5428"), 153), "grass_hang")
+    # (the crypt keeps its brick; moss now grows over it as a layer -- see
+    # shaders/growth.gdshader -- so the moss-capped variants are no longer built)
+    save(moss_tex(340), "moss")
     print("wrote", sorted(p.name for p in OUT.glob("*.png")))
 
 

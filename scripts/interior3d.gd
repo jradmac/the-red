@@ -82,7 +82,9 @@ func setup(owner_interior: Interior) -> void:
 	vp.size = Vector2i(360, 240)
 	vp.own_world_3d = true
 	vp.msaa_3d = Viewport.MSAA_DISABLED
-	vp.positional_shadow_atlas_size = 1024
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = View3D.SUPERSAMPLE   # drawn bigger, averaged down: clean edges
+	vp.positional_shadow_atlas_size = 2048
 	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	add_child(vp)
 	_root = Node3D.new()

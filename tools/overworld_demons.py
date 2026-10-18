@@ -454,59 +454,43 @@ def witch(s, facing, f, o):
             s.dot(x0, hy - 5 - h + ([0, -1, 0, 0][(f + k) % 4]), "glow", 4)
 
 
-def grandmother(s, facing, f, o):
-    """Walks upright in her nightgown, paws out in front of her."""
-    wolf = o.get("wolf", False)
-    b = STEP[f]
+def shepherd(s, facing, f, o):
+    """Glides, very slowly, the crook planting and the caged flame swinging."""
+    pale = o.get("pale", False)
+    sway = [0, 0.5, 0, -0.5][f]
     side = facing == "side"
     back = facing == "up"
-    _feet(s, f, (10, 14) if not side else (11, 13), "fur", r=1.1, side=side)
-    hem = _hem(5, 19, 28 + b * 0.5, f, rag=0.8)
-    s.poly([(9, 13 + b), (15, 13 + b), (18.5, 24 + b)] + hem[::-1] + [(5.5, 24 + b)], "cloak", grad=(3, 1))
-    for k in range(5):   # little flowers
-        s.dot(7.5 + (k * 3.1) % 10, 17 + (k * 2) % 9 + b, "gum", 3)
-    for x in range(6, 19, 2):   # the frill
-        s.dot(x, 28 + b * 0.5 + (x % 4 == 0), "veil", 4)
-    if wolf and not back:
-        s.poly([(11, 19 + b), (13, 19 + b), (13.5, 27 + b), (10.5, 27 + b)], "fur", grad=(2, 1))
-    # the shawl
-    s.blob(12 - (1 if side else 0), 13.5 + b, 4.5, 2.2, "veil", bands=(-0.25, 0.15, 0.6, 0.9))
-    # paws
-    for d in ((1,) if side else (-1, 1)):
-        a = [0, 1, 0, -1][f] * d
-        x0 = 12 + d * 3.5 if not side else 14
-        s.limb([(x0, 14 + b), (x0 + d * 1 + (2 if side else 0), 18 + b + a)], 0.9, "cloak", r_end=0.8)
-        s.blob(x0 + d * 1 + (2.5 if side else 0), 19 + b + a, 1.2, 1.1, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
-    # the wolf's head under the bonnet
-    hx = 12 + (1.5 if side else 0)
-    hy = 8 + b
-    for d in (-1, 1):   # ears
-        s.poly([(hx + d * 1.5, hy - 2.5), (hx + d * 3.5, hy - 3), (hx + d * 3, hy - 6.5 - (1 if wolf else 0))], "fur",
-               grad=(3, 1))
-    s.blob(hx, hy, 3.4, 3.2, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
-    if not wolf:
-        s.blob(hx - (0.5 if side else 0), hy - 3, 4.2, 2.0, "veil", bands=(-0.25, 0.15, 0.6, 0.9, 0.98))
-        for k in range(5):
-            s.dot(hx - 4 + k * 2, hy - 1.5 + (k % 2) * 0.5, "veil", 4)
+    hem = _hem(6, 18, 29, f, rag=1.0)
+    s.poly([(10, 10), (14, 10), (17.5, 22)] + hem[::-1] + [(6.5, 22)], "cloak", grad=(2, 0))
+    for xf in (9, 12, 15):
+        s.line([(xf, 13), (xf + (xf - 12) * 0.35, 28)], "cloak", 0)
+    # the crook and its cage-lantern
+    sx = 18.5 + sway * 0.5 if not side else 17.5 + sway * 0.5
+    if not back or side:
+        s.limb([(sx, GROUND), (sx, 2)], 0.5, "wood", r_end=0.5)
+        s.limb([(sx, 2), (sx + 1.5, 0.6), (sx + 2.8, 1.8), (sx + 2.6, 3.5)], 0.45, "wood", r_end=0.4)
+        lx, ly = sx + 2.6 + sway * 0.5, 6
+        s.blob(lx, ly, 1.3, 1.6, "glow", bands=(-0.2, 0.25, 0.6, 0.85, 0.97))
+        s.dot(lx - 1.3, ly, "wood", 1)
+        s.dot(lx + 1.3, ly, "wood", 1)
+        s.limb([(12 + 3.5, 13), (sx, 14)], 0.6, "cloak", r_end=0.5)
+    # the hood, peaked, the bone mask inside it
+    hx = 12 + (1 if side else 0) + sway * 0.3
+    s.blob(hx, 6.5, 3.6, 4.4, "cloak", bands=(-0.3, 0.1, 0.65, 0.92, 0.99))
+    s.poly([(hx - 1.2, 3), (hx + 1.2, 3), (hx + 0.4, 0.5)], "cloak", grad=(3, 1))
     if back:
+        s.limb([(12 - 3.5, 12), (6.5, 17)], 0.6, "cloak", r_end=0.5)
+        s.limb([(sx, GROUND), (sx, 2)], 0.5, "wood", r_end=0.5)
+        s.blob(sx + 2.6, 6, 1.3, 1.6, "glow", bands=(-0.2, 0.25, 0.6, 0.85, 0.97))
         return
+    mx = hx + (1.2 if side else 0)
+    s.blob(mx, 7, 2.2, 2.9, "bone", bands=(-0.25, 0.1, 0.55, 0.86, 0.97))
+    eye = "ff6a5a" if pale else "b8ff9a"
     if side:
-        s.blob(hx + 3, hy + 1.5, 2.2, 1.4, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))   # the muzzle
-        s.dot(hx + 5, hy + 1, "mouth", 0)
-        s.line([(hx + 2, hy + 2.5), (hx + 4.5, hy + 2.5)], "mouth", 0)
-        s.dot(hx + 3.5, hy + 2.8, "teeth", 4)
-        s.dot(hx + 1.5, hy - 0.5, "ff3b4d" if wolf else "ffcf3f")
-        s.dot(hx + 1, hy - 0.5, "gold", 2) if not wolf else None
+        s.dot(mx + 1, 6.5, eye)
     else:
-        s.blob(hx, hy + 2, 2, 1.6, "fur", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
-        s.dot(hx, hy + 1.2, "mouth", 0)
-        s.line([(hx - 1.5, hy + 3), (hx + 1.5, hy + 3)], "mouth", 0)
-        s.dot(hx - 1, hy + 3.3, "teeth", 4)
-        s.dot(hx + 1, hy + 3.3, "teeth", 4)
-        for d in (-1, 1):
-            s.dot(hx + d * 1.4, hy - 0.5, "ff3b4d" if wolf else "ffcf3f")
-            if not wolf:
-                s.dot(hx + d * 2.3, hy - 0.5, "gold", 3)
+        s.dot(mx - 1, 6.5, eye)
+        s.dot(mx + 1, 6.5, eye)
 
 
-DESIGNS.update({"marionette": marionette, "witch": witch, "grandmother": grandmother})
+DESIGNS.update({"marionette": marionette, "witch": witch, "shepherd": shepherd})

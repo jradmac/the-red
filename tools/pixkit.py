@@ -62,8 +62,15 @@ def ramp(base, n=6):
 
 
 class Sprite:
-    def __init__(self, w, h):
+    def __init__(self, w, h, k=1.0, grain=0.0, cast=False):
+        """`k` scales every coordinate and radius (designs drawn on a 48-unit grid
+        render bigger and finer at k > 1); `grain` roughens the shading bands
+        like hand-placed pixels; `cast` makes each outlined part throw a small
+        shadow down-right onto the parts drawn before it."""
         self.w, self.h = w, h
+        self.k = k
+        self.grain = grain
+        self.cast = cast
         self.px = [[None] * w for _ in range(h)]     # (material, tone) or ("#", rgba)
         self.part = [[-1] * w for _ in range(h)]
         self._pid = 0
@@ -80,6 +87,19 @@ class Sprite:
     def _end(self, pid, cells, outline=True, inner=True):
         if not outline:
             return
+        if self.cast:
+            d = max(1, round(1.6 * self.k))
+            hit = set()
+            for (x, y) in cells:
+                for dx, dy in ((1, 1), (d - 1, d), (d, d)):
+                    nx, ny = x + dx, y + dy
+                    if (nx, ny) in cells or (nx, ny) in hit or not self.inside(nx, ny):
+                        continue
+                    p = self.px[ny][nx]
+                    if p is None or p[0] == "#" or self.part[ny][nx] == pid:
+                        continue
+                    hit.add((nx, ny))
+                    self.px[ny][nx] = (p[0], max(0, min(p[1], 4) - 1))
         for (x, y) in list(cells):
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 nx, ny = x + dx, y + dy
@@ -99,9 +119,11 @@ class Sprite:
             self.part[y][x] = pid
             cells.add((x, y))
 
-    @staticmethod
-    def _tone(n, x, y, bands, dither):
+    def _tone(self, n, x, y, bands, dither):
         i = n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]
+        if self.grain:
+            hsh = ((x * 73856093) ^ (y * 19349663)) % 1000 / 1000.0
+            i += (hsh - 0.5) * self.grain
         if dither:
             i += (BAYER4[y % 4][x % 4] / 16.0 - 0.47) * dither
         for k, th in enumerate(bands):
@@ -116,6 +138,11 @@ class Sprite:
     def blob(self, cx, cy, rx, ry, mat, bands=(-0.25, 0.12, 0.48, 0.80, 0.95), dither=0.0,
              outline=True, inner=True, clip=None, flat=1.0):
         """A lit ellipsoid. `flat` < 1 flattens it (a plate)."""
+        k = self.k
+        cx, cy, rx, ry = cx * k, cy * k, rx * k, ry * k
+        if clip and k != 1.0:
+            c0 = clip
+            clip = lambda x, y: c0(x / k, y / k)
         pid, cells = self._begin()
         for y in range(int(cy - ry) - 1, int(cy + ry) + 2):
             for x in range(int(cx - rx) - 1, int(cx + rx) + 2):
@@ -135,8 +162,11 @@ class Sprite:
 
     def limb(self, pts, r, mat, r_end=None, bands=(-0.2, 0.2, 0.62, 0.9), outline=True, inner=True):
         """A tapered tube through `pts` (radius r -> r_end)."""
+        k = self.k
+        pts = [(x * k, y * k) for x, y in pts]
+        r *= k
         pid, cells = self._begin()
-        r_end = r if r_end is None else r_end
+        r_end = r if r_end is None else r_end * k
         total = sum(math.dist(pts[i], pts[i + 1]) for i in range(len(pts) - 1)) or 1.0
         run = 0.0
         best = {}
@@ -169,6 +199,7 @@ class Sprite:
 
     def poly(self, pts, mat, tone=2, grad=None, outline=True, inner=True):
         """A flat polygon; `grad` = (tone_top, tone_bottom) shades it top to bottom."""
+        pts = [(x * self.k, y * self.k) for x, y in pts]
         pid, cells = self._begin()
         ys = [p[1] for p in pts]
         y0, y1 = int(min(ys)), int(max(ys))
@@ -192,6 +223,18 @@ class Sprite:
 
     # --- details (no outline) --------------------------------------------------
     def dot(self, x, y, mat, tone=None):
+        """One design-grid cell: at k > 1 it covers the pixels of that cell."""
+        k = self.k
+        if k == 1.0:
+            return self.pdot(x, y, mat, tone)
+        x0, y0 = int(math.floor(int(x) * k + 0.01)), int(math.floor(int(y) * k + 0.01))
+        x1, y1 = int(math.ceil((int(x) + 1) * k - 0.01)), int(math.ceil((int(y) + 1) * k - 0.01))
+        for yy in range(y0, max(y1, y0 + 1)):
+            for xx in range(x0, max(x1, x0 + 1)):
+                self.pdot(xx, yy, mat, tone)
+
+    def pdot(self, x, y, mat, tone=None):
+        """One pixel (pixel coordinates)."""
         if self.inside(int(x), int(y)):
             if tone is None:
                 self.px[int(y)][int(x)] = ("#", hexc(mat) if isinstance(mat, str) else mat)
@@ -200,6 +243,11 @@ class Sprite:
 
     def line(self, pts, mat, tone=None, only_on=True):
         """1px line through pts; with only_on, only over existing pixels."""
+        pts = [(x * self.k, y * self.k) for x, y in pts]
+        self.pline(pts, mat, tone, only_on)
+
+    def pline(self, pts, mat, tone=None, only_on=True):
+        """line() in pixel coordinates."""
         for i in range(len(pts) - 1):
             (x0, y0), (x1, y1) = pts[i], pts[i + 1]
             n = int(max(abs(x1 - x0), abs(y1 - y0))) + 1
@@ -207,7 +255,7 @@ class Sprite:
                 x = round(x0 + (x1 - x0) * k / max(n, 1))
                 y = round(y0 + (y1 - y0) * k / max(n, 1))
                 if self.inside(x, y) and (not only_on or self.px[y][x] is not None):
-                    self.dot(x, y, mat, tone)
+                    self.pdot(x, y, mat, tone)
 
     def shade(self, cells_or_fn, delta):
         """Darken (delta<0) or lighten the tone of existing pixels."""
@@ -216,7 +264,7 @@ class Sprite:
                 p = self.px[y][x]
                 if p is None or p[0] == "#":
                     continue
-                hit = cells_or_fn(x, y) if callable(cells_or_fn) else (x, y) in cells_or_fn
+                hit = cells_or_fn(x / self.k, y / self.k) if callable(cells_or_fn) else (x, y) in cells_or_fn
                 if hit:
                     self.px[y][x] = (p[0], max(-1, min(5, p[1] + delta)))
 
@@ -224,17 +272,69 @@ class Sprite:
         """A glossy eye: dark socket ring, glowing iris, white glint."""
         col = hexc(color)
         dark = _shift(col, 0, 0.1, 0.35)
+        cx, cy, r = cx * self.k, cy * self.k, r * self.k
         for y in range(int(cy - r) - 1, int(cy + r) + 2):
             for x in range(int(cx - r) - 1, int(cx + r) + 2):
                 d = math.hypot(x + 0.5 - cx, y + 0.5 - cy)
                 if d <= r + 0.6:
-                    self.dot(x, y, OUTLINE)
+                    self.pdot(x, y, OUTLINE)
                 if d <= r - 0.15:
                     k = d / max(r, 0.5)
                     c = _shift(col, 0, -0.15, 1.0, 0.25) if k < 0.45 else (col if k < 0.8 else dark)
-                    self.dot(x, y, c)
+                    self.pdot(x, y, c)
         if glint:
-            self.dot(int(cx - r * 0.45), int(cy - r * 0.45), (255, 255, 255, 255))
+            self.pdot(int(cx - r * 0.45), int(cy - r * 0.45), (255, 255, 255, 255))
+
+    # --- surface passes (pixel space, after the forms) --------------------------
+    @staticmethod
+    def _hash(x, y, seed=0):
+        return (((x + seed * 31) * 73856093) ^ ((y + seed * 17) * 19349663) ^ (seed * 83492791)) % 1000 / 1000.0
+
+    def cells_of(self, mat, tones=None):
+        out = []
+        for y in range(self.h):
+            for x in range(self.w):
+                p = self.px[y][x]
+                if p and p[0] == mat and (tones is None or p[1] in tones):
+                    out.append((x, y))
+        return out
+
+    def texture(self, mat, density=0.12, delta=-1, tones=(1, 2, 3, 4), seed=1, clip=None):
+        """Speckle a material: pits, pores, scales (a hashed sprinkle of tone shifts)."""
+        for (x, y) in self.cells_of(mat, tones):
+            if clip and not clip(x / self.k, y / self.k):
+                continue
+            if self._hash(x, y, seed) < density:
+                m, t = self.px[y][x]
+                self.px[y][x] = (m, max(0, min(5, t + delta)))
+
+    def fuzz(self, mat, density=0.35, seed=3, tone=1, clip=None):
+        """Bristles: hairs poke one pixel out of the silhouette wherever `mat` meets the dark."""
+        adds = []
+        for y in range(self.h):
+            for x in range(self.w):
+                p = self.px[y][x]
+                if not p or p[0] != "#" or p[1] != OUTLINE:
+                    continue
+                if clip and not clip(x / self.k, y / self.k):
+                    continue
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    ix, iy, ox, oy = x - dx, y - dy, x + dx, y + dy
+                    if not (self.inside(ix, iy) and self.inside(ox, oy)):
+                        continue
+                    q = self.px[iy][ix]
+                    if q and q[0] == mat and self.px[oy][ox] is None and self._hash(x, y, seed + dx * 3 + dy) < density:
+                        adds.append((x, y, ox, oy))
+                        break
+        for (x, y, ox, oy) in adds:
+            self.px[y][x] = (mat, tone)
+            self.px[oy][ox] = ("#", OUTLINE)
+
+    def glints(self, mat, density=0.05, seed=5, tones=(3, 4)):
+        """Wet or polished: scattered single-pixel highlights on the lit side."""
+        for (x, y) in self.cells_of(mat, tones):
+            if self._hash(x, y, seed) < density:
+                self.px[y][x] = (mat, 5)
 
     # --- output -----------------------------------------------------------------
     def image(self, pal):

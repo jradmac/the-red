@@ -125,8 +125,30 @@ func item_at(c: Vector2i) -> Dictionary:
 
 
 func drop(c: Vector2i, stack: Dictionary) -> void:
-	if not stack.is_empty():
-		ground[c] = stack
+	if stack.is_empty():
+		return
+	var same: bool = ground.has(c) and ground[c].id == stack.id and Items.kind(stack.id) in ["matches", "ruby", "flare", "potion", "bomb", "key", "tool"]
+	if ground.has(c) and not same:
+		# never drop something on top of something else (a key would be lost):
+		# put it on the nearest free floor instead
+		var seen := {c: true}
+		var q: Array[Vector2i] = [c]
+		var head := 0
+		while head < q.size() and head < 400:
+			var p: Vector2i = q[head]
+			head += 1
+			if not ground.has(p) and world.is_walkable(p):
+				c = p
+				break
+			for d in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+				var n: Vector2i = p + d
+				if not seen.has(n) and (world.is_walkable(n) or n == c):
+					seen[n] = true
+					q.append(n)
+	elif ground.has(c):
+		stack = stack.duplicate()
+		stack.qty = int(stack.get("qty", 1)) + int(ground[c].get("qty", 1))
+	ground[c] = stack
 
 
 func bind(h: Hero) -> void:

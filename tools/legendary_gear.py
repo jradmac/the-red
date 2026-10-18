@@ -1,17 +1,18 @@
 """The two legendary pieces of gear, drawn to sit with the rest:
 
-    HUNTSMAN'S AXE   the woodsman's felling axe -- the one that cut Grandmother
-                     free. A broad bearded head with a moon-bright edge on a
-                     long ash haft, a strip of red cloth tied below the head.
-    WOLFSKIN CLOAK   the Big Bad Wolf's own pelt, worn with its head for a hood:
-                     ears up, muzzle over your brow, amber glass for eyes.
+    WARDEN'S AXE     the felling axe of the labyrinth's first warden: a broad
+                     bearded head with a moon-bright edge on a long ash haft,
+                     a strip of red cloth tied below the head.
+    KING'S MANTLE    the mantle of whoever wore the Hollow Crown: deep purple,
+                     trimmed in gold, a collar of white fur, and a thin gold
+                     circlet over the hood.
 
-Also six everyday weapons for variety (EXTRA: pitchfork, cleaver, wolf spear,
+Also six everyday weapons for variety (EXTRA: pitchfork, cleaver, boar spear,
 flail, silver dagger, war scythe), drawn the same way, in the usual loot.
 
 The other generators call in here, so re-running any of them keeps these:
     make_gear_big.py   register_gear()  -> the axe in gear_big / gear_side(_big).png
-    make_hero_big.py   wolf_hero()      -> the cloak as look 6 of the big hero
+    make_hero_big.py   mantle_hero()    -> the mantle as look 6 of the big hero
 and tools/make_legendary_gear.py adds the small pieces to the sheets other
 tools build whole (hero*.png look 6, gear.png column 6, items.png icons 32, 33).
 """
@@ -19,10 +20,11 @@ import math
 
 from PIL import Image
 
-AXE = "huntsmans_axe"
-CLOAK = "wolfskin_cloak"
-FUR = {1: "7c7680", 2: "6e7488"}          # the pelt (a little bluer on player 2)
-EYE = "ffb040"                            # the wolf's amber glass eyes
+AXE = "wardens_axe"
+CLOAK = "kings_mantle"
+VELVET = {1: "4e2a6e", 2: "2e3478"}       # the mantle (bluer on player 2)
+GOLD = "d8a838"
+ERMINE = "f0ece4"
 
 
 # --- the weapon (make_gear_big.py) ------------------------------------------------------
@@ -45,7 +47,7 @@ def _axe(s, g):
         x, y = at(57 + math.cos(a) * 6.0, 9 + math.sin(a) * 9.5)
         s.pdot(round(x), round(y), "dfe8f4" if k % 3 else "fbfdff")
     s.line([at(60, 4), at(62, 12)], "silver", 5)
-    s.line([at(50, 6), at(53, 11), at(56, 7)], "metal", 1)        # the mark: a wolf's head, roughly
+    s.line([at(50, 6), at(53, 11), at(56, 7)], "metal", 1)        # the warden's mark
     s.dot(*at(53, 8), "metal", 0)
     # a strip of red cloth tied round the haft under the head, its ends fluttering
     s.limb([at(40, -2.6), at(40, 2.6)], 1.3, "ribbon")
@@ -85,7 +87,7 @@ def _cleaver(s, g):
     s.glints("metal", 0.05)
 
 
-def _wolf_spear(s, g):
+def _boar_spear(s, g):
     at, grip = g["at"], g["grip"]
     s.limb([at(0), at(50)], 1.8, "ash")
     s.line([at(3, -0.6), at(48, -0.6)], "ash", 4)
@@ -96,7 +98,7 @@ def _wolf_spear(s, g):
     s.blob(*at(47, 6), 1.4, 1.4, "metal")
     s.poly([at(49, -3.4), at(57, -3.2), at(65, 0), at(57, 3.2), at(49, 3.4)], "metal", grad=(3, 2))
     s.line([at(50, 0), at(63, 0)], "metal", 5)
-    s.limb([at(44, 2.0), at(41, 5.0), at(39, 7.5)], 0.8, "fur", r_end=0.4)   # a tuft of grey fur tied on
+    s.limb([at(44, -2.6), at(44, 2.6)], 1.0, "leather")          # a leather binding under the lugs
     s.texture("ash", 0.12, -1, tones=(2, 3, 4), seed=12)
 
 
@@ -152,8 +154,8 @@ def _war_scythe(s, g):
 EXTRA = [
     ("pitchfork", "PITCHFORK", 3, 0, 3, 12, "THREE RUSTED TINES. IT STILL SMELLS OF HAY.", _pitchfork),
     ("cleaver", "CLEAVER", 3, 0, 3, 12, "A BUTCHER'S CLEAVER. THE INN WILL WANT IT BACK.", _cleaver),
-    ("wolf_spear", "WOLF SPEAR", 4, 1, 2, 26,
-     "A BOAR SPEAR WITH A CROSSBAR, SO WHATEVER YOU STAB CAN'T CLIMB THE SHAFT TO YOU.", _wolf_spear),
+    ("boar_spear", "BOAR SPEAR", 4, 1, 2, 26,
+     "A CROSSBAR BELOW THE BLADE, SO WHATEVER YOU STAB CAN'T CLIMB THE SHAFT TO YOU.", _boar_spear),
     ("flail", "FLAIL", 5, 2, 2, 44, "A SPIKED BALL ON A CHAIN. HARD TO AIM. HARDER TO STOP.", _flail),
     ("silver_dagger", "SILVER DAGGER", 5, 2, 1, 50, "BLESSED SILVER. THE DEMONS DON'T LIKE TO LOOK AT IT.",
      _silver_dagger),
@@ -179,106 +181,87 @@ def register_gear(order, designs, pal, g):
 
 # --- the armour, big (make_hero_big.py) ---------------------------------------------------
 
-def wolf_hero(Hero):
-    """Called by make_hero_big.py: a Hero that also knows the wolfskin cloak --
-    drawn as the worn cloak's long cloak and hood, in fur, with the wolf's head."""
+def mantle_hero(Hero):
+    """Called by make_hero_big.py: a Hero that also knows the King's Mantle --
+    drawn as the worn cloak's long cloak and hood, in velvet, trimmed in gold,
+    with a white fur collar and a circlet over the hood."""
 
-    class WolfHero(Hero):
+    class MantleHero(Hero):
         def __init__(self, look, facing, blue, arm=True):
-            self.wolf = look == CLOAK
-            super().__init__("worn_cloak" if self.wolf else look, facing, blue, arm)
+            self.mantle = look == CLOAK
+            super().__init__("worn_cloak" if self.mantle else look, facing, blue, arm)
 
         def arm(self, sh, el, hd, sleeve, near=True):
-            if self.wolf and sleeve == "tunic":
-                sleeve = "cloth"   # (the arm piece asks for a bare sleeve: it's fur too)
+            if self.mantle and sleeve == "tunic":
+                sleeve = "cloth"
             super().arm(sh, el, hd, sleeve, near)
 
-        def _ears(self, xs, top):
-            for x0, x1, tip in xs:
-                self.poly([(x0, top + 7), (x1, top + 5), (tip, top - 7)], "cloth", grad=(4, 2))
-                mx = (x0 + x1) / 2
-                self.poly([(mx - 1.6, top + 4.5), (mx + 1.6, top + 4), (tip + (mx - tip) * 0.35, top - 2)], "skin",
-                          tone=1, outline=False)
+        def capelet(self, back):
+            super().capelet(back)
+            if self.mantle:
+                # the white fur collar round the shoulders, spotted, and gold trim down the edges
+                self.blob(32, 47, 15, 3.6, "ermine", bands=(-0.3, 0.1, 0.6, 0.9, 0.99))
+                for x in (22, 28, 35, 41):
+                    self.dot(x, 47 + (x % 2), "eye", 1)
+                if not back:
+                    for side in (-1, 1):
+                        self.line([(32 + side * 9, 50), (32 + side * 13.5, 83)], "gold", 3, only_on=True)
+
+        def _circlet(self, y, x0, x1):
+            self.limb([(x0, y), (x1, y)], 0.9, "gold")
+            for x in (x0 + 2, (x0 + x1) / 2, x1 - 2):
+                self.poly([(x - 1.2, y - 0.5), (x + 1.2, y - 0.5), (x, y - 3.2)], "gold", tone=3)
+            self.dot((x0 + x1) / 2, y, "ff3b4d")
 
         def head_front(self):
             super().head_front()
-            if not self.wolf:
-                return
-            self._ears(((19, 27, 20.5), (37, 45, 43.5)), 14)
-            # the wolf's head over the brow: muzzle toward you, nose, fangs over the rim, glass eyes
-            self.limb([(32, 21), (32, 15)], 4.2, "cloth", r_end=3.4)          # the bridge of the muzzle
-            self.line([(30, 20), (30, 15)], "cloth", 4)
-            self.blob(32, 13.5, 3.0, 2.0, "dark", bands=(-0.3, 0.3, 0.8))     # the nose
-            self.dot(31, 13, "dark", 4)
-            for x in (28.5, 35.5):
-                self.limb([(x, 19.5), (x + (0.6 if x < 32 else -0.6), 23)], 0.9, "bone", r_end=0.3)
-            for x in (24, 40):
-                self.s.pdot(self.X(x), 18, EYE)
-                self.s.pdot(self.X(x) + 1, 18, EYE)
-                self.s.pdot(self.X(x), 19, "a8601a")
+            if self.mantle:
+                self.line([(20, 40), (19, 30), (24, 19), (32, 16.5), (40, 19), (45, 30), (44, 40)], "gold", 3)
+                self._circlet(18.5, 23, 41)
 
         def head_back(self):
             super().head_back()
-            if not self.wolf:
-                return
-            self._ears(((19, 27, 20.5), (37, 45, 43.5)), 14)
-            for k in range(7):   # the ruff of the pelt at the nape
-                x = 21 + k * 3.7
-                self.line([(x, 42), (x + 1, 46)], "cloth", 1 if k % 2 else 4, only_on=False)
+            if self.mantle:
+                self._circlet(19, 21, 43)
 
         def head_side(self):
             super().head_side()
-            if not self.wolf:
-                return
-            self._ears(((32, 38, 35), (38, 44, 43)), 14)
-            # the muzzle runs forward over the brow, to a black nose
-            self.limb([(31, 20), (24, 17.5), (16, 19)], 4.0, "cloth", r_end=2.2)
-            self.blob(14.8, 18.6, 1.8, 1.5, "dark", bands=(-0.3, 0.3, 0.8))
-            self.limb([(20, 21.5), (20.5, 24.5)], 0.8, "bone", r_end=0.3)
-            x = self.X(27)
-            self.s.pdot(x, 17, EYE)
-            self.s.pdot(x + (-1 if self.flip else 1), 17, EYE)
+            if self.mantle:
+                self._circlet(19.5, 22, 44)
 
         def finish(self, pal):
-            if self.wolf:
+            if self.mantle:
                 pal = dict(pal)
-                pal["cloth"] = FUR[2 if pal.get("cloth") == "3a5cc4" else 1]
-                self.s.fuzz("cloth", 0.5, seed=13, tone=1)
-                self.s.texture("cloth", 0.18, -1, tones=(1, 2, 3, 4), seed=21)
+                pal["cloth"] = VELVET[2 if pal.get("cloth") == "3a5cc4" else 1]
+                pal["gold"] = GOLD
+                pal["ermine"] = ERMINE
+                self.s.texture("cloth", 0.06, +1, tones=(2, 3), seed=21)
+                self.s.glints("gold", 0.25)
             return super().finish(pal)
 
-    return WolfHero
+    return MantleHero
 
 
 # --- the small pieces (make_legendary_gear.py) -------------------------------------------
 
-# the small hero: the worn cloak's look in fur (make_art.py ARMOR_LOOKS form)
-_FUR_SMALL = {"R": "7c7680", "H": "a49eac", "h": "ccc6d0", "r": "57525f", "d": "3b3745"}
-SMALL_LOOK = ("wolfskin_cloak", {"head": dict(_FUR_SMALL), "body": dict(_FUR_SMALL), "legs": {}})
+# the small hero: the worn cloak's look in velvet (make_art.py ARMOR_LOOKS form)
+_VELVET_SMALL = {"R": "5a3480", "H": "7e52a8", "h": "a27cc8", "r": "3e2258", "d": "2a163e"}
+SMALL_LOOK = ("kings_mantle", {"head": dict(_VELVET_SMALL), "body": dict(_VELVET_SMALL), "legs": {}})
 
 
-def ears_small(frame, view):
-    """Two pricked ears on the small hero's hood (view: down / up / left / right)."""
+def crown_small(frame, view):
+    """A thin gold circlet across the top of the small hero's hood."""
     px = frame.load()
     ys = [y for y in range(frame.height) if any(px[x, y][3] for x in range(16))]
     if not ys:
         return frame
-    top = ys[0]
-    xs = [x for x in range(16) if px[x, top][3]]
-    lo, hi = min(xs), max(xs)
-    if view in ("down", "up"):
-        ear_x = (lo, hi)
-    else:   # side: both ears toward the back of the head
-        back = hi if view == "left" else lo
-        step = -1 if view == "left" else 1
-        ear_x = (back - step * 3, back - step * 1)
-    fur = (0xa4, 0x9e, 0xac, 255)
-    dark = (0x1c, 0x10, 0x20, 255)
-    for x in ear_x:
-        if top >= 1:
-            frame.putpixel((x, top - 1), dark)
-        if top >= 0:
-            frame.putpixel((x, top), fur)
+    row = ys[0] + 1
+    xs = [x for x in range(16) if px[x, row][3] and px[x, row][:3] != (0x1c, 0x10, 0x20)]
+    if len(xs) >= 3:
+        gold = (0xe8, 0xb8, 0x48, 255)
+        for x in xs[1:-1]:
+            frame.putpixel((x, row), gold)
+        frame.putpixel((xs[len(xs) // 2], row), (0xff, 0x3b, 0x4d, 255))
     return frame
 
 
@@ -290,23 +273,24 @@ def small_axe(big_diag):
 
 CLOAK_ICON = [
     "................",
-    "...K........K...",
-    "..KhK......KhK..",
-    "..KhhKKKKKKhhK..",
-    "..KhHHHHHHHHrK..",
-    "..KHHaHHHHaHrK..",
-    "...KHHHKKHHrK...",
-    "...KHHHHHHrrK...",
-    "..KHHKbKKbKHrK..",
-    ".KHHHHHHHHHHrrK.",
-    ".KhHHHHHHHHHHrK.",
-    "KhHHHHHHHHHHHrrK",
-    "KHHHHHHHHHHHHHrK",
-    "KHrHHrHHrHHrHrrK",
-    ".KKrKKrKKrKKrKK.",
+    "....G.G..G.G....",
+    "....GGGRRGGG....",
+    "...KVVVVVVVVK...",
+    "..KVvVVVVVVvVK..",
+    "..KVVKKKKKKVVK..",
+    "..KWWWWWWWWWWK..",
+    ".KWdWWdWWdWWdWK.",
+    ".KVGVVVVVVVVGVK.",
+    "KVVGVVVVVVVVGVvK",
+    "KVVGVVVVVVVVGvvK",
+    "KVVGVVVVVVVVGVvK",
+    "KVVGVVVVVVVVGvvK",
+    "KGGGGGGGGGGGGGGK",
+    ".KKKKKKKKKKKKKK.",
     "................",
 ]
-CLOAK_PAL = {"K": "1c1020", "H": "8c8690", "h": "ccc6d0", "r": "57525f", "a": EYE, "b": "f2ead8"}
+CLOAK_PAL = {"K": "1c1020", "V": "5e3488", "v": "3e2258", "G": "e8b848", "R": "ff3b4d", "W": "f0ece4",
+             "d": "2a2430"}
 
 
 def cloak_icon():

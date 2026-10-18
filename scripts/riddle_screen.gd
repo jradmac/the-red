@@ -171,27 +171,34 @@ func _offer_upgrade() -> void:
 
 
 func _give_clue(key: bool) -> void:
-	var door := doors.next_door(player.cell)
+	# always the same door for you until it's open: the one nearest you
+	# (that you can open) when you first asked -- the key clue is that door's key
+	var door := doors.clue_door(player.cell, pfx, inventory)
 	if door.x < 0:
 		_message = "NO LOCKED DOOR STANDS BEFORE YOU. SEEK THE MASTER CHAMBER!"
 		_message_col = C_DIM
 		return
+	var color: String = doors.doors[door].color
 	var spot := door
+	_message = ""
 	if key:
-		spot = doors.key_spot(door)
-		var color: String = doors.doors[door].color
 		if inventory.count_of(color + "_key") > 0:
-			_message = "YOU ALREADY CARRY A " + color.to_upper() + " KEY! I'LL SHOW YOU THE DOOR INSTEAD."
-			spot = door
-		elif spot.x < 0:
-			spot = door
+			_message = "YOU ALREADY CARRY A " + color.to_upper() + " KEY! HERE IS ITS DOOR."
+		else:
+			var k := doors.clue_key(door, player.cell)
+			if k.x >= 0:
+				spot = k
 	world.map_area(spot)
 	if not automap.hints.has(spot):
 		automap.hints.append(spot)
-	if _message == "" or not _message.begins_with("YOU ALREADY"):
-		_message = ("ITS KEY LIES HERE..." if spot != door else "THE NEXT DOOR IS HERE...") + "  CHECK YOUR MAP (M)."
-	else:
-		_message += "  CHECK YOUR MAP (M)."
+	if spot == door and not automap.hints.has(door):
+		automap.hints.append(door)
+	if _message == "":
+		if spot != door:
+			_message = "THE KEY TO THE " + color.to_upper() + " DOOR LIES HERE..."
+		else:
+			_message = "THE " + color.to_upper() + " DOOR TO OPEN NEXT IS HERE..."
+	_message += "  CHECK YOUR MAP (M)."
 	_message_col = Color("7dffe0")
 
 

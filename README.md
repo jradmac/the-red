@@ -1,6 +1,6 @@
-# Pack-Man (working title)
+# Red Riding
 
-A dark, retro-style labyrinth crawler built in Godot 4. Design doc lives in Claude Docs.
+A dark, retro-style labyrinth crawler built in Godot 4, loosely after Little Red Riding Hood. (Working titles: Pack-Man, Scythe.) Design doc lives in Claude Docs.
 
 ## Run it
 
@@ -54,6 +54,9 @@ How deep you are = how many locked doors stand between you and the start
 - `tools/make_walls3d.py` — raised-terrain autotiles: every wall top and water edge is drawn as four 8x8 quarters with rounded corners, lit lips and sloped sides (Pokemon-style depth); wall faces are tall sprites that rise over the tile above
 - `tools/make_wall_blocks.py` — the stone of the 3D walls (`wall_blocks.png`): tops, fronts and sides drawn from one material per landscape (castle stone with a pale coping in the crypt, weathered sandstone in the courtyard, rock under a cap of turf in the mountains), so they meet in a rounded edge. In 3D every wall is a single block one tile high: the top shows over its own tile and the front fills the bottom row (a wall one tile deep gets a strip of top along its front)
 - `tools/make_wall_details.py` — the landscape details laid over the 3D walls and cliffs (`wall_details.png`, `cliff_details.png`): moss, hanging moss, cobwebs, seeping damp and pale toadstools in the crypt; ivy, flowering creepers, lichen and cracks in the courtyard; snow caps, icicles, lichen, ore veins and crystals in the mountains; roots, ferns and mushrooms on woodland cliffs; slime, vines and bracket fungus in the swamp. `terrain3d.gd` puts one on a face now and then, more of them in patches (`DETAIL_CHANCE` sets how often per landscape)
+- `tools/make_battle_sprites.py` (designs in `battle_insects.py`, `battle_demons.py`) — the creatures up close in battle: 64 x 64 insects, 64 x 96 demons (`insects_battle.png`, `demons_battle.png`), 4 frames each. Drawn by `tools/pixkit.py` as lit 3D forms on a 48-unit grid rendered at 4/3, with cast shadows between parts, grain in the shading and a per-creature surface pass (pitted shells, bristles, dusty wing scales, pocked flesh, wet glints). The Weeper and the Bride have their own designs: hair over a face of wet black eye-holes, hands clawing at it; the Bride in a veil and a hem-stained dress, holding a dead bouquet
+- `tools/make_hero_big.py` + `tools/make_gear_big.py` — the detailed hero (64 x 96: 4 facings x the 6 armor looks, player 1 / player 2, normal / blue lantern) with the pack and bedroll from behind, and the 6 weapons at 64 x 64. `HeroLook.draw_big()` draws them in battle (from behind; the right arm, `hero_big_arm.png`, swings the weapon on its own) and turning on the pedestal in the bag
+- `tools/make_straps.py` — how the weapon is carried, small hero and big: slung across the back on a leather baldric, grip up over the right shoulder. Facing you the grip shows over your shoulder and the strap (with its buckle) crosses your chest; from behind it lies over the pack, bound by two loops; from the side a steeper sprite (`gear_side*.png`, from `make_gear_big.py`) runs down along the pack. `HeroLook.CARRY_OFF` / `CARRY_OFF_BIG` place it. When you swing it in battle the strap stays and the weapon leaves your back
 - `scripts/arches.gd` + `tools/make_tall.py` — stone archways where crypts open to the outdoors, and the tall sprites (castle walls, cliffs, ruined walls, tree crowns, boulders) that give the outdoors height
 - `scripts/traps.gd` — traps per landscape (spike plates, spike rows, trapdoors, darts, falling masonry, bear traps, thorns, rockfalls, quicksand, poison gas vents). ~1 per 400 open tiles, none near the start; direct damage, a little more deeper in
 - `scripts/mist.gd` — drifting fog over rivers, swamps, forests and mountains
@@ -130,6 +133,9 @@ Every sound is synthesized by `tools/make_sfx.py` into assets/sfx/ (80 wavs). `s
 
 ## Music
 `tools/make_music.py` composes 13 looping tracks (assets/music/*.ogg) around one theme: day and night for each landscape (crypt, forest, courtyard, mountain, river, swamp) plus battle. Each landscape has its own key, mode, tempo and instruments; night turns it minor, slow, sparse and echoing over a drone. main.gd picks the track by where you are (after 2.5 s, so borders don't flicker) and crossfades; battles switch to the battle theme; tracks resume where they left off. N toggles music.
+
+## Title screen
+`scripts/title_screen.gd`, before anything else: RED RIDING carved out of the dark -- heavy Roman capitals, eroded, chipped and gouged, red-hot at the bottom like lantern light (`assets/title_logo.png`, built by `tools/make_title.py` from TeX Gyre Bonum Bold in `tools/fonts`). It flickers in like a wick catching, a band of heat passes over it now and then, and motes of warm lantern light and deep violet shadow drift up past it. "DON'T STRAY FROM THE PATH." PRESS START (Z, Enter, a controller's A or Start), then CONTINUE (with the saved run's summary) when there is one, or NEW GAME, which asks before erasing a save. New game goes on to the waking scene.
 
 ## Saving and settings
 One save slot (save_game.gd, user://scythe_save.dat). The labyrinth is rebuilt from its seed and the changes are re-applied (you, bag, light, flares, open doors, chests, floor items, berries, living/dead creatures by uid, sprites, clock, map, hints, stats). Save from the bag's bottom row (SAVE GAME / SAVE + QUIT); at start-up a title screen offers CONTINUE or NEW GAME (which asks before erasing). Dying or winning deletes the save. SETTINGS (same row) has separate sound-effect and music volumes, kept in user://settings.cfg.
@@ -221,3 +227,32 @@ its wrist. One per player (main.gd `longmen`, `_tick_longmen`, `_on_eaten`).
 There's no fight button: an insect or demon touching you, or you walking into one, starts the
 battle straight away (main.gd `_start_fight`; no lead-in text). Demons and insects engage the
 same way. (`transition.gd` is no longer used for fights.)
+
+## The battle screen
+- `scripts/battle_fx.gd` (BattleFX): the place you're fighting in, drawn behind the fighters to match
+  where the fight broke out -- a crypt colonnade (arches, pillars, sconces, flagstones in
+  perspective), or outdoors a night sky with stars and a moon over a tree line (forest, river with
+  its water, swamp with dead snags), peaks with snow (mountain) or broken columns (courtyard).
+  Everything that floats: embers off your lantern, dust in its light, soft out-of-focus motes, the
+  creature's aura (red malice off a demon, spores off an insect), the landscape's drift (fireflies,
+  grit from the ceiling, snow, ash, swamp bubbles and spores), rolling fog, a vignette; and bursts
+  when blows land (sparks + impact ring, ichor, a guard's shards, dodge dust, heal crosses, the flare).
+- Fighters slide in from the sides as the screen fades up from black (INTRO_TIME).
+- Choosing a move: ATTACK, DEFEND and DODGE are three big cards across the bottom (battle.gd DECK,
+  `_big_card`): name, icon at twice size, the number that matters and what happens either way. The
+  one you're on lifts, glows and gives off its move (sparks / cold motes / wind). What the creature
+  gives away sits on a banner above them. The BAG is a button beneath the deck: DOWN to reach it,
+  Z to open (potions, flare), UP back to the cards.
+
+## Tools (seer stone, portal flare, ladder)
+Three items that take a bag slot (kind "tool", stacking to 3), used from the bag; the better they are, the rarer (chest weights 3 / 2 / 1; shop prices 22 / 40 / 55). Icons 29-31 in `items.png` come from `tools/make_tool_items.py`.
+- **Seer Stone** (`scripts/seer_trail.gd`): lays a trail of glowing green dust along the ground from where you stand to the nearest gate -- the same gate a sprite's clue would name (`Doors.clue_door`; `Doors.seer_path` walks the way there), or the master seal once no locked door is left in reach. It runs out from your feet, pulses toward the gate, motes drift up from it, a swirl hangs at the gate, faint green lights tint the floor along it; it lasts 90 seconds. In 3D it's unshaded billboards plus a soft glow lying on the ground (two MultiMeshes), so it shines in the dark and walls still hide it.
+- **Portal Flare** (`Flares.portals`): plant it and it burns violet forever and maps the room like a flare. On the map (M), Z picks a portal flare (arrows go from one to the next), Z again steps you through to it from anywhere (`main._travel`), X backs out. Shared by both players; saved.
+- **Ladder** (`scripts/ladders.gd`): set it against a crypt brick wall that's one tile thick with floor on the other side (not the outer wall, not the master seal). It hooks over the top, a ladder down each face, and stays. Face it and press Z: `Player.climb_over` climbs up the ladder, over the top and hops down on the far side (never walking along the wall); in 3D the sprite and its lantern rise with `climb_lift`. Works from either side; saved. Both sides must be in the same part of the labyrinth (`Doors.section_of`, via `Ladders.area_of`): a ladder never takes you past a locked door.
+
+## Selling at the shop
+In a village shop, left/right turns the list between BUY and SELL. The SELL side lists everything in your bag; Z sells one of the chosen item for `Items.sell_price` -- 70% of what the shop charges for it (`SELL_RATE`, upgrades included, at least 1 ruby). Shops won't take keys.
+
+## Lockpicking
+Picking a lock (lock_puzzle.gd) burns your lantern fast: about 3 light/s on the first doors, about 4.5 on the deepest, on top of the normal drain. The big LANTERN meter at the bottom of the screen shows it. Every miss takes a bite of 14 light, up to 20 deep, marked in red on the meter with a "-N LIGHT" popup. A silver miss drops your last set pin; a gold or purple miss drops them all. You don't need your own lantern, just light by the door: a planted flare, your partner's lantern or a candle is enough to see the pins by (`Doors.light_at` → `Enemies.is_lit`), and picking by it costs nothing. The lock only closes if every light by the door goes out, yours included. By day, in a village or under sunstone the lantern isn't burning, so there's no drain and no miss cost.
+Depth (doors.gd passes the deeper side of the door's progress; the master lock is always 1.0) makes pins up to 60% faster with a 15% tighter window, and past halfway the pins speed up and slow down unevenly. The timing window runs from about 245 ms (bronze, first doors) to about 70 ms (gold, deepest).

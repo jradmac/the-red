@@ -5,6 +5,7 @@ extends RefCounted
 ##
 ## kinds:  weapon / armor / potion  -> take an inventory slot (potions stack to 3)
 ##         key                       -> takes a slot (same-color keys stack to 3)
+##         tool                      -> takes a slot (stack to 3): seer stone, portal flare, ladder
 ##         matches / flare / lantern -> no slot (counters, or replaces your lantern)
 
 const ICONS_TEX: Texture2D = preload("res://assets/items.png")
@@ -23,6 +24,21 @@ const DATA := {
 		"desc": "HEAVY, SPIKED, AND VERY PERSUASIVE."},
 	"grave_blade": {"name": "GRAVE BLADE", "kind": "weapon", "atk": 6, "icon": 5,
 		"desc": "A SWORD PULLED FROM A TOMB. IT HUMS."},
+	# (more everyday weapons for variety: tools/legendary_gear.py EXTRA)
+	"pitchfork": {"name": "PITCHFORK", "kind": "weapon", "atk": 3, "icon": 34,
+		"desc": "THREE RUSTED TINES. IT STILL SMELLS OF HAY."},
+	"cleaver": {"name": "CLEAVER", "kind": "weapon", "atk": 3, "icon": 35,
+		"desc": "A BUTCHER'S CLEAVER. THE INN WILL WANT IT BACK."},
+	"boar_spear": {"name": "BOAR SPEAR", "kind": "weapon", "atk": 4, "icon": 36,
+		"desc": "A CROSSBAR BELOW THE BLADE, SO WHATEVER YOU STAB CAN'T CLIMB THE SHAFT TO YOU."},
+	"flail": {"name": "FLAIL", "kind": "weapon", "atk": 5, "icon": 37,
+		"desc": "A SPIKED BALL ON A CHAIN. HARD TO AIM. HARDER TO STOP."},
+	"silver_dagger": {"name": "SILVER DAGGER", "kind": "weapon", "atk": 5, "icon": 38,
+		"desc": "BLESSED SILVER. THE DEMONS DON'T LIKE TO LOOK AT IT."},
+	"war_scythe": {"name": "WAR SCYTHE", "kind": "weapon", "atk": 6, "icon": 39,
+		"desc": "A REAPER'S BLADE TURNED TO STAND UP STRAIGHT. FOR A HARVEST OF A DIFFERENT KIND."},
+	"wardens_axe": {"name": "WARDEN'S AXE", "kind": "weapon", "atk": 10, "icon": 32, "legendary": true,
+		"desc": "LEGENDARY. THE LABYRINTH'S FIRST WARDEN CARRIED THIS. IT HAS NEVER LOST A FIGHT."},
 	# Armor (def)
 	"worn_cloak": {"name": "WORN CLOAK", "kind": "armor", "def": 1, "icon": 6,
 		"desc": "THIN WOOL. IT SMELLS LIKE HOME."},
@@ -34,6 +50,8 @@ const DATA := {
 		"desc": "RIBS LASHED TOGETHER. GRIM BUT STURDY."},
 	"iron_plate": {"name": "IRON PLATE", "kind": "armor", "def": 5, "icon": 10,
 		"desc": "A KNIGHT'S BREASTPLATE. THE KNIGHT IS GONE."},
+	"kings_mantle": {"name": "KING'S MANTLE", "kind": "armor", "def": 9, "icon": 33, "legendary": true,
+		"desc": "LEGENDARY. THE MANTLE OF WHOEVER WORE THE HOLLOW CROWN. NOTHING THAT SERVED THEM WILL LAY A CLAW ON IT."},
 	# Potions
 	"healing_tonic": {"name": "HEALING TONIC", "kind": "potion", "icon": 11,
 		"desc": "RESTORES ALL YOUR HEALTH."},
@@ -51,6 +69,13 @@ const DATA := {
 		"desc": "FOR 60 SECONDS NO WIND CAN TOUCH YOUR FLAME."},
 	"seers_draught": {"name": "SEER'S DRAUGHT", "kind": "potion", "icon": 14,
 		"desc": "SHOWS THE NEAREST UNOPENED CHEST ON YOUR MAP."},
+	# Tools (used from the bag; the better the tool, the rarer it is)
+	"seer_stone": {"name": "SEER STONE", "kind": "tool", "icon": 29,
+		"desc": "HOLD IT UP AND IT SHEDS A TRAIL OF GLOWING GREEN DUST ALONG THE GROUND, ALL THE WAY TO THE NEAREST GATE."},
+	"portal_flare": {"name": "PORTAL FLARE", "kind": "tool", "icon": 30,
+		"desc": "PLANT IT AND IT BURNS VIOLET FOREVER. OPEN YOUR MAP, PICK IT, AND YOU STEP BACK TO IT FROM ANYWHERE."},
+	"ladder": {"name": "LADDER", "kind": "tool", "icon": 31,
+		"desc": "SET IT AGAINST A CRYPT WALL ONE BRICK THICK, THEN PRESS Z AT IT TO CLIMB OVER TO THE OTHER SIDE."},
 	# Lanterns (replace yours if better)
 	"brass_lantern": {"name": "BRASS LANTERN", "kind": "lantern", "icon": 15,
 		"max_fuel": 130.0, "radius": 94.0, "desc": "BURNS LONGER AND BRIGHTER."},
@@ -84,7 +109,9 @@ const LOOT := [
 	["matches", 8], ["flare", 8],
 	["healing_tonic", 12], ["lamp_oil", 5], ["windbreak", 6], ["seers_draught", 6], ["bomb", 7],
 	["red_berry", 9], ["blue_berry", 4], ["sunstone", 3],
+	["seer_stone", 3], ["portal_flare", 2], ["ladder", 1],
 	["bone_club", 6], ["hatchet", 5], ["hooked_sickle", 4], ["iron_mace", 3], ["grave_blade", 1],
+	["pitchfork", 3], ["cleaver", 3], ["boar_spear", 2], ["flail", 2], ["silver_dagger", 1], ["war_scythe", 1],
 	["leather_vest", 6], ["chain_shirt", 4], ["bone_mail", 3], ["iron_plate", 2],
 	["brass_lantern", 3], ["storm_lantern", 2], ["witchglass_lantern", 1],
 ]
@@ -97,14 +124,53 @@ const LOOT := [
 const PRICES := {
 	"matches": 4, "flare": 6, "red_berry": 5, "blue_berry": 9, "lamp_oil": 8,
 	"healing_tonic": 14, "windbreak": 10, "seers_draught": 12, "bomb": 18, "sunstone": 28,
+	"seer_stone": 22, "portal_flare": 40, "ladder": 55,
 	"brass_lantern": 35, "storm_lantern": 55, "witchglass_lantern": 85,
-	"bone_club": 10, "hatchet": 24, "hooked_sickle": 24, "iron_mace": 42, "grave_blade": 70,
+	"bone_club": 10, "hatchet": 24, "hooked_sickle": 24, "iron_mace": 42, "grave_blade": 70, "wardens_axe": 260,
+	"pitchfork": 12, "cleaver": 12, "boar_spear": 26, "flail": 44, "silver_dagger": 50, "war_scythe": 72,
+	"kings_mantle": 240,
 	"leather_vest": 10, "chain_shirt": 24, "bone_mail": 42, "iron_plate": 62,
 }
 
 
+## The legendary gear (tools/legendary_gear.py): far stronger than anything
+## else, and never in a shop or the usual loot. A deep chest might hold one
+## (LEGENDARY_CHEST at the very bottom, none in the first part of the
+## labyrinth), a legendary creature leaves one behind LEGENDARY_DROP of the
+## time and a rare creature hardly ever (RARE_DROP). About one journey in four
+## turns up either of them at all.
+const LEGENDARY := ["wardens_axe", "kings_mantle"]
+const LEGENDARY_CHEST := 0.0015
+const LEGENDARY_DROP := 0.25
+const RARE_DROP := 0.003
+
+
+static func is_legendary(id: String) -> bool:
+	return DATA.get(id, {}).get("legendary", false)
+
+
+## The chance a chest `progress` of the way down holds a legendary piece.
+static func legendary_chest_chance(progress: float) -> float:
+	return LEGENDARY_CHEST * smoothstep(0.45, 1.0, progress)
+
+
+static func legendary_pick(rng: RandomNumberGenerator) -> String:
+	return LEGENDARY[rng.randi() % LEGENDARY.size()]
+
+
 static func price(stack: Dictionary) -> int:
 	return int(PRICES.get(stack.id, 10)) + Items.bonus(stack) * 8
+
+
+## What a shop pays you for one of these: a little under what it charges.
+const SELL_RATE := 0.7
+static func sell_price(stack: Dictionary) -> int:
+	return maxi(1, int(floor(price(stack) * SELL_RATE)))
+
+
+## Shops won't take keys: you'd be selling your way out of the labyrinth.
+static func sellable(id: String) -> bool:
+	return kind(id) != "key"
 
 
 static func get_info(id: String) -> Dictionary:
@@ -124,12 +190,12 @@ static func is_ruby(id: String) -> bool:
 
 
 static func uses_slot(id: String) -> bool:
-	return kind(id) in ["weapon", "armor", "potion", "key", "bomb"]
+	return kind(id) in ["weapon", "armor", "potion", "key", "bomb", "tool"]
 
 
 ## Potions and keys of the same type stack (up to 3) in one slot.
 static func stacks(id: String) -> bool:
-	return kind(id) in ["potion", "key", "bomb"]
+	return kind(id) in ["potion", "key", "bomb", "tool"]
 
 
 static func stat_line(id: String) -> String:
@@ -140,6 +206,7 @@ static func stat_line(id: String) -> String:
 		"potion": return "POTION"
 		"key": return "KEY"
 		"bomb": return "BOMB"
+		"tool": return "TOOL"
 		"lantern": return "LANTERN"
 		"ruby": return "MONEY"
 	return ""
@@ -191,6 +258,7 @@ static func with_article(id: String, qty: int = 1) -> String:
 ## labyrinth, chests lean toward the better tiers.
 const GEAR_TIER := {
 	"rusty_dagger": 0, "bone_club": 0, "hatchet": 1, "hooked_sickle": 1, "iron_mace": 2, "grave_blade": 2,
+	"pitchfork": 0, "cleaver": 0, "boar_spear": 1, "flail": 2, "silver_dagger": 2, "war_scythe": 2,
 	"worn_cloak": 0, "leather_vest": 0, "chain_shirt": 1, "bone_mail": 2, "iron_plate": 2,
 	"brass_lantern": 1, "storm_lantern": 1, "witchglass_lantern": 2,
 }

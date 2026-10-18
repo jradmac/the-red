@@ -77,6 +77,12 @@ var lantern_blue := false  ## set by main: the lantern burns blue
 var lantern_glow := Color(0, 0, 0, 0)   ## set by main: a shimmer around the lantern (blue flame, sunstone)
 var _body_bob := 0.0
 var _gear_off := Vector2.ZERO
+## Climbing over a wall on a ladder (Ladders): up, over the top, a hop down.
+const CLIMB_TIME := 1.35
+const CLIMB_TOP := 1.08     # tiles: just over a crypt wall's top
+var climbing := false
+var climb_lift := 0.0       ## tiles off the ground right now (3D: raised; 2D: drawn higher)
+var _climb := {}
 var _gear_vel := Vector2.ZERO
 
 
@@ -100,6 +106,11 @@ func _process(delta: float) -> void:
 	_update_held_dirs()
 	if ui_lock != "" or dead:
 		_held_dirs.clear()
+	if climbing:
+		_tick_climb(delta)
+		_update_energy(delta)
+		_update_sprite(delta)
+		return
 	if moving:
 		_move_t += delta / _move_duration
 		if _move_t >= 1.0:
@@ -138,11 +149,51 @@ func _update_energy(delta: float) -> void:
 ## True when nothing is open and the hero can do things (open, strike, plant).
 ## Also false on the frame a menu closes, so one key press can't do two things.
 func can_act() -> bool:
-	return ui_lock == "" and not dead and Engine.get_process_frames() != _unlock_frame
+	return ui_lock == "" and not dead and not climbing and Engine.get_process_frames() != _unlock_frame
 
 
 func facing_cell() -> Vector2i:
 	return cell + [Vector2i.DOWN, Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT][int(facing)]
+
+
+## Over the wall at `wall` (a ladder's on it) and down onto `land`.
+func climb_over(wall: Vector2i, land: Vector2i) -> void:
+	facing = _dir_to_facing(wall - cell)
+	_climb = {"from": position, "wall": world.cell_to_position(wall), "to": world.cell_to_position(land),
+		"land": land, "t": 0.0}
+	climbing = true
+	moving = true
+	Sfx.play("rustle", -6.0, 0.1, 0.8)
+
+
+func _tick_climb(delta: float) -> void:
+	_climb.t += delta / CLIMB_TIME
+	var u: float = _climb.t
+	var near: Vector2 = (_climb.from as Vector2).lerp(_climb.wall, 0.5)    # at the wall's face
+	var far: Vector2 = (_climb.wall as Vector2).lerp(_climb.to, 0.5)       # its other face
+	if u < 0.5:            # up the ladder, hand over hand
+		var k := u / 0.5
+		position = (_climb.from as Vector2).lerp(near, minf(k * 1.6, 1.0)).round()
+		climb_lift = CLIMB_TOP * smoothstep(0.0, 1.0, k)
+	elif u < 0.72:         # over the top
+		var k := (u - 0.5) / 0.22
+		position = near.lerp(far, k).round()
+		climb_lift = CLIMB_TOP + 0.1 * sin(k * PI)
+	elif u < 1.0:          # and a hop down the other side
+		var k := (u - 0.72) / 0.28
+		position = far.lerp(_climb.to, k).round()
+		climb_lift = CLIMB_TOP * (1.0 - k) + 0.35 * sin(k * PI) * (1.0 - k)
+		if not _climb.has("hop"):
+			_climb["hop"] = true
+			Sfx.play("dodge", -8.0)
+	else:
+		position = _climb.to
+		cell = _climb.land
+		climb_lift = 0.0
+		climbing = false
+		moving = false
+		Sfx.play("bump", -6.0, 0.05, 0.8)
+		stepped.emit(cell)
 
 
 func _try_start_move() -> void:
@@ -177,6 +228,13 @@ func _try_start_move() -> void:
 ## bounce and swings a touch side to side, more when running.
 func _update_sprite(delta: float) -> void:
 	_col = 0
+	if climbing:
+		# hand over hand up the rungs, then still for the hop
+		var u: float = _climb.get("t", 0.0)
+		_col = [1, 2, 3, 4][int(u * 14.0) % 4] if u < 0.5 else 0
+		_body_bob = 0.0
+		queue_redraw()
+		return
 	var lift := 0.0
 	var sway := 0.0
 	if moving:
@@ -202,7 +260,7 @@ func _update_sprite(delta: float) -> void:
 
 
 func _draw() -> void:
-	paint(self, Vector2.ZERO)
+	paint(self, Vector2(0, -roundf(climb_lift * TILE)))
 
 
 ## Draws the hero onto any canvas with its tile's top-left at `at` (its own

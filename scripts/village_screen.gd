@@ -6,7 +6,9 @@ extends CanvasLayer
 ## B leaves.
 ##
 ##   shop   always sells healing tonics, flares, matches and every kind of
-##          lantern, plus a few odds and ends that change from village to village
+##          lantern, plus a few odds and ends that change from village to village;
+##          left/right turns to the SELL side, where it buys what's in your bag
+##          (one at a time) for a little under what it charges (Items.sell_price)
 ##   sage   mends all your wounds (priced by how hurt you are), and gives advice
 ##   inn    a bed until morning (for everybody: the night is skipped), or a hot meal
 ##   home   whoever lives there; some give you something for the road
@@ -44,13 +46,17 @@ const SHOP_HELLO := ["COME IN, COME IN! EVERYTHING HAS A PRICE, AND EVERY PRICE 
 	"LOOKING TO SPEND SOME RUBIES? YOU'VE COME TO THE RIGHT COUNTER.",
 	"MIND THE SHELVES. AND THE CAT. MOSTLY THE CAT.",
 	"LIGHT, HEALING, STEEL. WHATEVER KEEPS YOU BREATHING OUT THERE."]
+const SHOP_BUYS := ["LET'S SEE WHAT YOU'VE DRAGGED OUT OF THE DARK.", "HM. I MIGHT TAKE SOME OF THAT OFF YOUR HANDS.",
+	"EVERYTHING HAS A PRICE. YOURS JUST HAPPENS TO BE A BIT LOWER THAN MINE."]
+const SHOP_BOUGHT := ["DONE. DON'T SPEND IT ALL IN ONE PLACE.", "I'LL FIND SOMEONE WHO WANTS IT. PROBABLY.",
+	"A FAIR TRADE. FAIR FOR ME, ANYWAY.", "PLEASURE DOING BUSINESS."]
 const SHOP_THANKS := ["A FINE CHOICE.", "PLEASURE DOING BUSINESS.", "MAY IT SERVE YOU WELL.",
 	"COME BACK ALIVE, NOW. I LIKE REPEAT CUSTOMERS.", "THAT ONE'S A GOOD 'UN."]
 const SAGE_HELLO := ["SIT. LET ME SEE THOSE WOUNDS.", "THE LABYRINTH HAS LEFT ITS MARKS ON YOU, I SEE.",
 	"COME CLOSER TO THE FIRE, CHILD. TELL ME WHERE IT HURTS."]
 const SAGE_TIPS := [
 	"A DEMON SHOWS ITS INTENT BEFORE IT STRIKES. WATCH ITS TELLS, AND DEFEND WHEN IT WINDS UP.",
-	"WHEN THE FLAME DIES, THE LONGMAN COMES. KEEP A MATCH READY, ALWAYS.",
+	"WHEN THE FLAME DIES, THE WOLF MAN COMES. KEEP A MATCH READY, ALWAYS.",
 	"EVERY LOCKED DOOR HAS ITS KEY ON YOUR SIDE OF IT. SEARCH BEFORE YOU DESPAIR.",
 	"BLUE BERRIES CRUSHED INTO THE FLAME MAKE IT BURN COLD. THE CREATURES CANNOT BEAR IT.",
 	"THE SUN DOES NOT REACH THE DEEPEST HALLS. SPEND YOUR DAYLIGHT WISELY.",
@@ -106,6 +112,7 @@ var _place_name := ""
 var _time := 0.0
 var _opened_frame := -1
 var _talk_i := 0
+var _selling := false          ## the shop's SELL side (left/right turns between them)
 
 
 func setup(h: Hero, v: Villages, f: Flares, d: DayCycle, w: World) -> void:
@@ -131,6 +138,7 @@ func open(vi: int, b: Dictionary) -> void:
 	_opened_frame = Engine.get_process_frames()
 	_sel = 0
 	_scroll = 0
+	_selling = false
 	var v: Dictionary = villages.list[vi]
 	var door: Vector2i = b.door
 	_rng.seed = int(v.seed) + door.x * 131 + door.y * 7
@@ -200,6 +208,23 @@ func _give_gift() -> void:
 
 func _build_options() -> void:
 	_options.clear()
+	if _kind == "shop" and _selling:
+		# the SELL side: everything in your bag, at what the shop will pay for one
+		var inv := hero.inventory
+		for i in Inventory.SLOTS:
+			var st: Dictionary = inv.slots[i]
+			if st.is_empty():
+				continue
+			var label := Items.label(st) + (" X" + str(st.qty) if int(st.get("qty", 1)) > 1 else "")
+			if Items.sellable(st.id):
+				_options.append({"label": label, "price": Items.sell_price(st), "stack": st, "slot": i, "act": "sell"})
+			else:
+				_options.append({"label": label, "price": 0, "stack": st, "slot": i, "act": "nosale"})
+		if _options.is_empty():
+			_options.append({"label": "YOUR BAG IS EMPTY", "price": 0, "act": "none"})
+		_options.append({"label": "LEAVE", "price": 0, "act": "leave"})
+		_sel = clampi(_sel, 0, _options.size() - 1)
+		return
 	match _kind:
 		"shop":
 			var stock := _stock()
@@ -269,6 +294,13 @@ func _process(delta: float) -> void:
 	elif Input.is_action_just_pressed(pfx + "move_down"):
 		_sel = posmod(_sel + 1, _options.size())
 		Sfx.play("ui_move")
+	elif _kind == "shop" and (Input.is_action_just_pressed(pfx + "move_left") or Input.is_action_just_pressed(pfx + "move_right")):
+		_selling = not _selling   # turn between what they sell and what you can sell them
+		_sel = 0
+		_scroll = 0
+		_build_options()
+		Sfx.play("page")
+		_speak(SHOP_BUYS[randi() % SHOP_BUYS.size()] if _selling else SHOP_HELLO[randi() % SHOP_HELLO.size()])
 	elif Input.is_action_just_pressed(pfx + "confirm"):
 		if _shown < _say.length():
 			_shown = _say.length()   # finish the sentence first
@@ -336,6 +368,25 @@ func _do(o: Dictionary) -> void:
 				_build_options()
 			Sfx.play("buy")
 			_speak(SHOP_THANKS[randi() % SHOP_THANKS.size()] + " (" + Items.with_article(id) + ")", C_GOOD)
+		"sell":
+			var slot: int = o.slot
+			var st: Dictionary = inv.slots[slot]
+			if st.is_empty():
+				return
+			var got := Items.sell_price(st)
+			var id: String = st.id
+			inv.remove_one(slot)
+			inv.rubies += got
+			inv.changed.emit()
+			Sfx.play("coin")
+			Sfx.play("buy", -6.0)
+			_speak(SHOP_BOUGHT[randi() % SHOP_BOUGHT.size()] + " (" + Items.display_name(id) + ", +" + str(got) + " RUBIES)", C_GOOD)
+			_build_options()
+		"nosale":
+			_speak("KEEP YOUR KEYS, FRIEND. YOU'LL WANT THEM MORE THAN I WILL.", C_DIM)
+			Sfx.play("ui_deny")
+		"none":
+			_speak("NOTHING TO SELL? THEN GO FIND SOMETHING. THE DARK IS FULL OF IT.", C_DIM)
 		"heal":
 			if inv.health >= inv.max_health:
 				_speak("YOU ARE WHOLE ALREADY. SAVE YOUR RUBIES.", C_DIM)
@@ -409,7 +460,9 @@ func _draw_screen() -> void:
 		_draw_room(c, room.grow(-2))
 	# the list
 	var lr := Rect2(176, 18, 176, 150)
-	UiKit.panel(c, lr, {"shop": "FOR SALE", "sage": "THE SAGE", "inn": "THE INN"}.get(_kind, "VISIT"), true)
+	var list_title: String = {"shop": "< BUY   SELL >" if not _selling else "< SELL   BUY >", "sage": "THE SAGE",
+		"inn": "THE INN"}.get(_kind, "VISIT")
+	UiKit.panel(c, lr, list_title, true)
 	for k in mini(LIST_ROWS, _options.size()):
 		var i := _scroll + k
 		if i >= _options.size():
@@ -426,9 +479,16 @@ func _draw_screen() -> void:
 			tx += 17
 		var price := int(o.price)
 		var label: String = o.label
-		var can := price <= hero.inventory.rubies
-		PixelFont.draw(c, Vector2(tx, row.position.y + 5), label, (C_PICK if picked else C_TEXT) if can or price == 0 else C_DIM)
-		if price > 0:
+		var selling: bool = o.act == "sell"
+		var can := price <= hero.inventory.rubies or selling
+		PixelFont.draw(c, Vector2(tx, row.position.y + 5), label,
+			((C_PICK if picked else C_TEXT) if can or price == 0 else C_DIM) if o.act != "nosale" else C_DIM)
+		if selling:   # what they'd pay you
+			var gs := "+" + str(price)
+			var gx := row.end.x - 6 - PixelFont.width_of(gs)
+			PixelFont.draw(c, Vector2(gx, row.position.y + 5), gs, C_GOOD)
+			c.draw_rect(Rect2(gx - 5, row.position.y + 6, 3, 3), C_RUBY)
+		elif price > 0:
 			var ps := str(price)
 			var px := row.end.x - 6 - PixelFont.width_of(ps)
 			PixelFont.draw(c, Vector2(px, row.position.y + 5), ps, C_RUBY if can else Color(C_RUBY, 0.45))
@@ -461,6 +521,8 @@ func _draw_screen() -> void:
 		if not dl.is_empty():
 			PixelFont.draw(c, Vector2(10, screen.y - 17), dl[0], C_DIM)
 	var help := "ENTER CHOOSE  / LEAVE" if pfx == "p2_" else "Z CHOOSE   X LEAVE"
+	if _kind == "shop":
+		help = ("< > BUY/SELL   " if not compact else "< > ") + help
 	PixelFont.draw(c, Vector2(screen.x - 8 - PixelFont.width_of(help), screen.y - 9), help, C_DIM)
 
 

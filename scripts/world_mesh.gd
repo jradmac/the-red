@@ -13,7 +13,16 @@ extends RefCounted
 ##   trees    in the woods every wall tile is a tree: a round leafy crown, and a
 ##            trunk where you can see one (instanced, so a forest is cheap)
 
-var ground_meshes: Array[ArrayMesh] = []   ## the ground (for things drawn on it: View3D)
+var ground_meshes: Array[ArrayMesh] = []
+var growth_meshes: Array[ArrayMesh] = []   ## walls and rock that moss, ivy or lichen can grow over
+## The surfaces the growth layer (shaders/growth.gdshader) may cover
+const GROWS_ON := {
+	"crypt_side": true, "crypt_cap_top": true, "crypt_cap_side": true, "crypt_mass": true,
+	"crypt_paving": true, "crypt_rubble": true, "cryptstep_side": true,
+	"court_side": true, "court_cap_top": true, "court_cap_side": true, "court_mass": true,
+	"court_paving": true, "court_meadow": true, "courtstep_side": true,
+	"rock_side": true, "rock_top": true, "rock_slab": true, "scree": true, "mtn_side": true,
+}   ## the ground (for things drawn on it: View3D)
 
 const CHUNK := 32               ## tiles per ground texture (512 px)
 const BORDER := 14              ## built past the map's edge, so it never ends in a void
@@ -46,6 +55,7 @@ func build(root: Node3D) -> void:
 	for cy in range(-BORDER, world.height + BORDER, CHUNK):
 		for cx in range(-BORDER, world.width + BORDER, CHUNK):
 			_build_chunk(Vector2i(cx, cy))
+	_growth()
 	print("WorldMesh built in ", Time.get_ticks_msec() - t0, " ms")
 
 
@@ -128,8 +138,12 @@ func _mat(key: String) -> StandardMaterial3D:
 	m.vertex_color_use_as_albedo = true
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	if not key.begins_with("ground:") and key != "ramps":
-		# walls, rock and leaves: crisp bands of light, like the DS games
+		# walls, rock and leaves: crisp bands of light, like the DS games, and a
+		# soft cartoon rim where a surface turns away from you
 		m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
+		m.rim_enabled = true
+		m.rim = 0.35
+		m.rim_tint = 0.6
 	if key.begins_with("ground:"):
 		m.albedo_texture = _ground_tex[_chunk_of_key(key)]
 		m.texture_repeat = false
@@ -194,6 +208,8 @@ func _flush(chunk: Vector2i) -> void:
 		node.add_child(mi)
 		if key.begins_with("ground:") or key == "ramps":
 			ground_meshes.append(mesh)
+		elif GROWS_ON.has(key):
+			growth_meshes.append(mesh)
 	_geo.clear()
 	_root.add_child(node)
 
@@ -329,7 +345,7 @@ func _wall(c: Vector2i) -> void:
 		if not open[d]:
 			continue
 		var low := minf(surface(c + d), 0.0)
-		_face(prefix + "_side", _edge(c, d), low, h - CAP, _n(d), Vector2(32, 30), 0.0, 0.42)
+		_face(_wall_side_key(prefix, c), _edge(c, d), low, h - CAP, _n(d), Vector2(32, 30), 0.0, 0.42)
 	if not border:
 		_ruin_step(c, prefix, h)
 		return
@@ -338,7 +354,7 @@ func _wall(c: Vector2i) -> void:
 	var r := x0 + 1 + (OV if open[Vector2i.RIGHT] else 0.0)
 	var t := z0 - (OV if open[Vector2i.UP] else 0.0)
 	var bt := z0 + 1 + (OV if open[Vector2i.DOWN] else 0.0)
-	_quad(prefix + "_cap_top", Vector3(l, h, t), Vector3(r, h, t), Vector3(r, h, bt), Vector3(l, h, bt),
+	_quad(_cap_key(prefix, c), Vector3(l, h, t), Vector3(r, h, t), Vector3(r, h, bt), Vector3(l, h, bt),
 		Vector2(l * 0.5, t), Vector2(r * 0.5, t), Vector2(r * 0.5, bt), Vector2(l * 0.5, bt), Vector3.UP)
 	for d in DIRS:
 		if not open[d]:
@@ -356,6 +372,14 @@ func _wall(c: Vector2i) -> void:
 			Vector3(e2[1].x, h - CAP, e2[1].y), Vector3(e2[0].x, h - CAP, e2[0].y),
 			Vector2(0, 0.9), Vector2(1, 0.9), Vector2(1, 1), Vector2(0, 1), Vector3.DOWN,
 			Color(0.4, 0.4, 0.45), Color(0.4, 0.4, 0.45), Color(0.4, 0.4, 0.45), Color(0.4, 0.4, 0.45))
+
+
+func _cap_key(prefix: String, c: Vector2i) -> String:
+	return prefix + "_cap_top"   # (moss now grows over the brick as a layer: shaders/growth.gdshader)
+
+
+func _wall_side_key(prefix: String, c: Vector2i) -> String:
+	return prefix + "_side"
 
 
 ## The inside of a thick crypt or courtyard wall: not a flat roof but a ruin
@@ -385,7 +409,7 @@ func _ruin_step(c: Vector2i, prefix: String, h: float) -> void:
 		if below >= top - 0.01:
 			continue
 		# the riser: a course of masonry, with a lit lip along its top
-		_face(prefix + "_side", _edge(c, d), below, top - 0.06, _n(d), Vector2(32, 30), 0.0, 0.5)
+		_face(_wall_side_key(prefix, c), _edge(c, d), below, top - 0.06, _n(d), Vector2(32, 30), 0.0, 0.5)
 		_face(prefix + "_cap_side", _edge(c, d), top - 0.06, top, _n(d), Vector2(16, 4), 0.0, 0.9)
 
 
@@ -408,11 +432,11 @@ func _corner_tone(x: int, z: int, t: int) -> Color:
 				lower = true
 	var k := 1.0
 	if higher:
-		k = 0.6
+		k = 0.72
 	elif lower:
-		k = 1.14
+		k = 1.08
 	var n := _wander(x * 0.55 + 31.0, z * 0.55) * 0.5 + 0.5
-	var patch := Color(0.9, 1.02, 0.86).lerp(Color(1.06, 0.96, 0.86), n)
+	var patch := Color(0.95, 1.0, 0.93).lerp(Color(1.02, 0.98, 0.93), n)
 	return Color(patch.r * k, patch.g * k, patch.b * k)
 
 
@@ -428,16 +452,16 @@ const TOPS := {
 ## [kind, how many per tile on average]. Kinds: a texture name (an upright
 ## tuft, fern or flowers) or "pebbles".
 const SMALL := {
-	"rock_top": [["tuft_dry", 1.2], ["pebbles", 0.5], ["tuft_flowers", 0.2]],
-	"rock_slab": [["pebbles", 0.6], ["tuft_dry", 0.5]],
-	"scree": [["pebbles", 1.4], ["tuft_dry", 0.2]],
-	"alpine_meadow": [["tuft_flowers", 1.0], ["tuft_green", 1.0], ["pebbles", 0.2]],
-	"crypt_mass": [["fern", 0.9], ["tuft_green", 0.5], ["pebbles", 0.3]],
-	"crypt_paving": [["tuft_green", 0.5], ["fern", 0.3], ["pebbles", 0.4]],
-	"crypt_rubble": [["pebbles", 1.3], ["fern", 0.3]],
-	"court_mass": [["tuft_court", 0.9], ["tuft_green", 0.6], ["pebbles", 0.2]],
-	"court_paving": [["tuft_court", 0.5], ["pebbles", 0.4]],
-	"court_meadow": [["tuft_flowers", 1.2], ["tuft_court", 1.0]],
+	"rock_top": [["tuft_dry", 0.5], ["pebbles", 0.2]],
+	"rock_slab": [["pebbles", 0.25], ["tuft_dry", 0.2]],
+	"scree": [["pebbles", 0.5]],
+	"alpine_meadow": [["tuft_green", 0.5], ["tuft_flowers", 0.25]],
+	"crypt_mass": [["fern", 0.45], ["tuft_green", 0.2]],
+	"crypt_paving": [["tuft_green", 0.25], ["fern", 0.15], ["pebbles", 0.15]],
+	"crypt_rubble": [["pebbles", 0.45], ["fern", 0.15]],
+	"court_mass": [["tuft_court", 0.45], ["tuft_green", 0.25]],
+	"court_paving": [["tuft_court", 0.25], ["pebbles", 0.15]],
+	"court_meadow": [["tuft_court", 0.5], ["tuft_flowers", 0.3]],
 }
 ## What hangs over a terrace's edge, per landscape
 const HANG := {World.B_MOUNTAIN: "grass_hang", World.B_CRYPT: "ivy_hang", World.B_COURT: "vine_hang"}
@@ -447,14 +471,14 @@ var _small: Array = []         ## this chunk: [position, kind, hash]
 func _top_key(c: Vector2i, t: int) -> String:
 	var b := _biome(c)
 	var opts: Array = TOPS.get(b, ["rock_top"])
-	var n := _wander(c.x * 0.45 + 17.0, c.y * 0.45 - 5.0)
-	var n2 := _wander(c.x * 0.3 - 40.0, c.y * 0.3 + 9.0)
+	var n := _wander(c.x * 0.3 + 17.0, c.y * 0.3 - 5.0)
+	var n2 := _wander(c.x * 0.2 - 40.0, c.y * 0.2 + 9.0)
 	if b == World.B_MOUNTAIN:
 		if t >= 3 and n2 > 0.1:
 			return "alpine_meadow" if n > 0.0 else "rock_slab"
 		if n > 0.38:
 			return "rock_slab"
-		if n < -0.42:
+		if n < -0.55:
 			return "scree"
 		if n2 > 0.55:
 			return "alpine_meadow"
@@ -539,10 +563,19 @@ func _small_props() -> void:
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
 		var mat: StandardMaterial3D
+		var smat: Material = null
 		if kind == "pebbles":
 			mm.mesh = Objects3D.rock_mesh()
 			mat = _mat("rock_side").duplicate() as StandardMaterial3D
 			mat.vertex_color_use_as_albedo = false
+		elif kind == "moss_cushion":
+			mm.mesh = Objects3D.rock_mesh()
+			var sm := ShaderMaterial.new()
+			sm.shader = CROWN_SHADER
+			sm.set_shader_parameter("leaves", load(W3D + "moss.png"))
+			sm.set_shader_parameter("uv_scale", 2.0)
+			smat = sm
+			mat = StandardMaterial3D.new()
 		else:
 			mm.mesh = _tuft_mesh
 			mat = StandardMaterial3D.new()
@@ -563,16 +596,19 @@ func _small_props() -> void:
 			if kind == "pebbles":
 				var r := 0.06 + float(h % 5) * 0.025
 				xf = Transform3D(rot.scaled(Vector3(r, r * 0.6, r)), p)
+			elif kind == "moss_cushion":
+				var r := 0.16 + float(h % 5) * 0.03
+				xf = Transform3D(rot.scaled(Vector3(r, r * 0.35, r * 0.85)), p + Vector3(0, r * 0.05, 0))
 			else:
 				var r := 0.36 + float(h % 4) * 0.06
 				xf = Transform3D(rot.scaled(Vector3(r, r, r)), p - Vector3(0, 0.02, 0))
 			mm.set_instance_transform(i, xf)
-			var tone := 0.85 + float((h / 9) % 4) * 0.07
+			var tone := 0.9 + float((h / 9) % 4) * 0.04
 			mm.set_instance_color(i, Color(tone, tone, tone))
 		mat.vertex_color_use_as_albedo = false
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
-		mi.material_override = mat
+		mi.material_override = smat if smat != null else mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_root.add_child(mi)
 
@@ -1062,3 +1098,38 @@ static func _make_trunk() -> ArrayMesh:
 			st.set_color(Color(0.8, 0.8, 0.8) if k < 2 else Color.WHITE)
 			st.add_vertex(p[k])
 	return st.commit()
+
+
+# --- The growth layer --------------------------------------------------------------------
+# Blocks stay the land's own blocks (the crypt's brick, the courtyard's
+# sandstone, the mountain's rock). Over them, a thin layer grows in patches --
+# moss in the crypts, grass and ivy in the courtyards, lichen on the mountains
+# -- on wall faces, wall tops and floors alike: a copy of those surfaces drawn a
+# hair above them with shaders/growth.gdshader, which decides in world space,
+# pixel by pixel, where the growth is (so it never repeats and runs across
+# neighbouring blocks), drips it over the edges of the walls and creeps it up
+# from the floor, and shades it in a few soft cartoon bands.
+
+const GROWTH_SHADER := preload("res://shaders/growth.gdshader")
+
+
+func _growth() -> void:
+	# the land under every tile, for the shader
+	var img := Image.create(world.width, world.height, false, Image.FORMAT_R8)
+	for y in world.height:
+		for x in world.width:
+			img.set_pixel(x, y, Color(float(world.biome_at(Vector2i(x, y))) / 8.0, 0, 0))
+	var biomes := ImageTexture.create_from_image(img)
+	for floor in [false, true]:
+		var m := ShaderMaterial.new()
+		m.shader = GROWTH_SHADER
+		m.set_shader_parameter("biome_map", biomes)
+		m.set_shader_parameter("map_size", Vector2(world.width, world.height))
+		m.set_shader_parameter("floor_mode", 1.0 if floor else 0.0)
+		var meshes: Array[ArrayMesh] = ground_meshes if floor else growth_meshes
+		for mesh in meshes:
+			var mi := MeshInstance3D.new()
+			mi.mesh = mesh
+			mi.material_override = m
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_root.add_child(mi)

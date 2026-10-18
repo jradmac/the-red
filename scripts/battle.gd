@@ -68,11 +68,22 @@ const C_DEFEND := Color("6aa8ff")
 const C_DODGE := Color("b8f0c8")
 const C_ITEM := Color("d8a0ff")
 
-const HERO_HOME := Vector2(74, 92)       # hero 3x frame top-left (48 x 72)
+const HERO_HOME := Vector2(70, 76)       # the hero's body box top-left (48 x 72): effects aim at it
+const HERO_BIG_OFF := Vector2(-8, -24)   # the 64 x 96 hero frame, same feet, from HERO_HOME
+const INSECTS_BIG: Texture2D = preload("res://assets/insects_battle.png")   # 64 x 64 frames
+const DEMONS_BIG: Texture2D = preload("res://assets/demons_battle.png")     # 64 x 96 frames
 const ENEMY_FEET := Vector2(262, 100)    # enemy stands here (bottom-centre)
 const CARD_SIZE := Vector2(36, 50)
 const DIE_TIME := 1.6          # the slain creature dissolving into smoke
 const BAG_TEX: Texture2D = preload("res://assets/bag_icon.png")
+## The move deck: ATTACK, DEFEND and DODGE as three big cards across the
+## bottom; the bag sits on its own beneath them (down to reach it).
+const DECK := ["attack", "defend", "dodge"]
+const BIG_CARD := Vector2(92, 50)
+const DECK_GAP := 8.0
+const DECK_Y := 171.0
+const BAG_RECT := Rect2(146, 225, 68, 12)
+const INTRO_TIME := 0.55       # the two of you slide in
 
 var player: Player
 var inventory: Inventory
@@ -112,6 +123,9 @@ var _player_flash := 0.0
 var _shake := 0.0
 var _white_flash := 0.0
 var _die_t := -1.0       # >= 0 while the enemy dissolves
+var _fx := BattleFX.new()   # the place you're fighting in, and everything floating in it
+var _intro := 9.0
+var _on_bag := false     # the bag (beneath the deck) is selected
 
 
 func setup(p: Player, inv: Inventory, l: Lantern) -> void:
@@ -146,6 +160,10 @@ func start(e: Enemy, _you_started: bool) -> void:
 	_die_t = -1.0
 	_popups.clear()
 	_opened_frame = Engine.get_process_frames()
+	_intro = 0.0
+	_on_bag = false
+	var w := player.world
+	_fx.setup(w.biome_at(player.cell), w.is_outdoors(player.cell), e.kind, randi())
 	var a := "AN " if e.display_name()[0] in "AEIOU" else "A "
 	_messages = [a + e.display_name() + " BARS YOUR WAY!",
 		"PICK ATTACK, DEFEND OR DODGE. IT PICKS IN SECRET TOO."]
@@ -202,7 +220,8 @@ func _new_round() -> void:
 	_build_items()
 	if not _item_options.is_empty():
 		_options.append("item")
-	_sel = clampi(_sel, 0, _options.size() - 1)
+	_sel = clampi(_sel, 0, DECK.size() - 1)
+	_on_bag = false
 	_state = "choose"
 	_t = 0.0
 
@@ -390,6 +409,25 @@ func _apply_impact() -> void:
 		Sfx.play("flare_up")
 	var enemy_pos := ENEMY_FEET - Vector2(0, 40)
 	var hero_pos := HERO_HOME + Vector2(24, 20)
+	var ichor := Color("6a1a3a") if enemy.kind == "demon" else Color("6a9a3a")
+	if _dmg_to_enemy > 0:
+		_fx.burst("spark", ENEMY_FEET - Vector2(0, 30))
+		_fx.burst("gore", ENEMY_FEET - Vector2(0, 30), ichor)
+	if _dmg_to_you > 0:
+		_fx.burst("spark", HERO_HOME + Vector2(24, 30))
+		_fx.burst("gore", HERO_HOME + Vector2(24, 30), Color("b0202e"))
+	if _you == "attack" and _them == "defend":
+		_fx.burst("block", ENEMY_FEET - Vector2(0, 34))
+	if _them == "attack" and _you == "defend":
+		_fx.burst("block", HERO_HOME + Vector2(24, 34))
+	if _you == "dodge" and _you_dodge_ok:
+		_fx.burst("dodge", HERO_HOME + Vector2(10, 70))
+	if _them == "dodge" and _them_dodge_ok:
+		_fx.burst("dodge", ENEMY_FEET + Vector2(20, -2))
+	if _heal > 0:
+		_fx.burst("heal", HERO_HOME + Vector2(24, 30))
+	if _you == "item" and _you_item.get("id", "") == "flare_up":
+		_fx.burst("flare", _lantern_at())
 	if _dmg_to_enemy > 0:
 		enemy.hp -= _dmg_to_enemy
 		_enemy_flash = 0.45
@@ -472,6 +510,10 @@ func _process(delta: float) -> void:
 	for p in _popups:
 		p.t += delta
 	_popups = _popups.filter(func(p): return p.t < 1.2)
+	_intro += delta
+	_fx.update(delta, _lantern_at(), lantern.fraction(), _enemy_box() if _die_t < 0.0 else Rect2())
+	if _state == "choose" and not _on_bag and _intro >= INTRO_TIME:
+		_fx.card_emit(DECK[_sel], _deck_rect(_sel), delta)
 	_canvas.queue_redraw()
 	if Engine.get_process_frames() == _opened_frame:
 		return
@@ -487,19 +529,26 @@ func _process(delta: float) -> void:
 					else:
 						_new_round()
 		"choose":
-			if Input.is_action_just_pressed(pfx + "move_right"):
-				_sel = mini(_sel + 1, _options.size() - 1)
+			if _on_bag:
+				if Input.is_action_just_pressed(pfx + "move_up"):
+					_on_bag = false
+					Sfx.play("ui_move")
+				elif Input.is_action_just_pressed(pfx + "confirm"):
+					Sfx.play("ui_select")
+					_state = "items"
+					_item_sel = 0
+			elif Input.is_action_just_pressed(pfx + "move_right"):
+				_sel = mini(_sel + 1, DECK.size() - 1)
 				Sfx.play("ui_move")
 			elif Input.is_action_just_pressed(pfx + "move_left"):
 				_sel = maxi(_sel - 1, 0)
 				Sfx.play("ui_move")
+			elif Input.is_action_just_pressed(pfx + "move_down") and "item" in _options:
+				_on_bag = true
+				Sfx.play("ui_move")
 			elif Input.is_action_just_pressed(pfx + "confirm"):
 				Sfx.play("ui_select")
-				if _options[_sel] == "item":
-					_state = "items"
-					_item_sel = 0
-				else:
-					_lock_in(_options[_sel])
+				_lock_in(DECK[_sel])
 		"items":
 			if Input.is_action_just_pressed(pfx + "move_down"):
 				_item_sel = mini(_item_sel + 1, _item_options.size() - 1)
@@ -542,15 +591,16 @@ func _draw_battle() -> void:
 		return
 	var screen := _canvas.get_viewport_rect().size
 	var shake := Vector2(_rng.randf_range(-2, 2), _rng.randf_range(-1, 1)) if _shake > 0.0 else Vector2.ZERO
-	UiKit.backdrop(_canvas, screen)
+	_fx.draw_back(_canvas, screen, shake)
 	if _player_flash > 0.0:
 		_canvas.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.6, 0.0, 0.08, _player_flash * 0.6))
 	# lantern light pooling on the ground between you
 	UiKit.glow(_canvas, Vector2(170, 120) + shake, 120, Color(1.0, 0.7, 0.4), 0.6 + 0.6 * lantern.fraction())
-	UiKit.pedestal(_canvas, ENEMY_FEET + Vector2(0, 2) + shake, 40, 8)
-	UiKit.pedestal(_canvas, HERO_HOME + Vector2(24, 70) + shake, 44, 9)
+	UiKit.pedestal(_canvas, ENEMY_FEET + Vector2(150.0 * _slide(), 2) + shake, 40, 8)
+	UiKit.pedestal(_canvas, HERO_HOME + Vector2(24 - 150.0 * _slide(), 70) + shake, 44, 9)
 	_draw_enemy(shake)
 	_draw_hero(shake)
+	_fx.draw_front(_canvas, screen)
 	_draw_cards_in_play()
 	_draw_popups()
 	_draw_enemy_panel()
@@ -558,6 +608,39 @@ func _draw_battle() -> void:
 	_draw_bottom()
 	if _white_flash > 0.0:
 		_canvas.draw_rect(Rect2(Vector2.ZERO, screen), Color(1, 0.97, 0.85, minf(_white_flash * 1.6, 1.0)))
+	if _intro < INTRO_TIME * 0.6:   # in from black
+		_canvas.draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 1.0 - _intro / (INTRO_TIME * 0.6)))
+
+
+## How far the fighters still have to slide in (0 = in place).
+func _slide() -> float:
+	return 1.0 - ease(clampf(_intro / INTRO_TIME, 0.0, 1.0), 0.35)
+
+
+## Where your lantern's flame is on the battle screen (embers rise from it).
+func _lantern_at() -> Vector2:
+	return HERO_HOME + Vector2(44, 46) + Vector2(-150.0 * _slide(), 0)
+
+
+func _enemy_box() -> Rect2:
+	var size := _enemy_size()
+	return Rect2(ENEMY_FEET - Vector2(size.x / 2.0, size.y) + Vector2(150.0 * _slide(), 0), size)
+
+
+## The creature's frame in its big battle sheet (tools/make_battle_sprites.py).
+func _enemy_size() -> Vector2:
+	return Vector2(64, 96) if enemy.kind == "demon" else Vector2(64, 64)
+
+
+func _enemy_tex() -> Texture2D:
+	return DEMONS_BIG if enemy.kind == "demon" else INSECTS_BIG
+
+
+func _deck_rect(i: int) -> Rect2:
+	var total := DECK.size() * BIG_CARD.x + (DECK.size() - 1) * DECK_GAP
+	var x := floorf((360.0 - total) / 2.0) + i * (BIG_CARD.x + DECK_GAP)
+	var lift := -5.0 if (i == _sel and not _on_bag) else 0.0
+	return Rect2(Vector2(x, DECK_Y + lift), BIG_CARD)
 
 
 ## 0..1 over the lunge: forward fast, hang at the impact, then back.
@@ -586,23 +669,26 @@ func _draw_enemy(shake: Vector2) -> void:
 	if _state == "dying":
 		_draw_dissolve(shake)
 		return
-	var h := 24 if enemy.kind == "demon" else 16
-	var tex: Texture2D = Enemy.INSECTS_TEX if enemy.kind == "insect" else Enemy.DEMONS_TEX
-	var size := Vector2(48, h * 3)
-	var pos := ENEMY_FEET - Vector2(24, size.y) + Vector2(0, roundf(sin(_time * 3.0) * 1.5)) + shake
+	var tex := _enemy_tex()
+	var size := _enemy_size()
+	var pos := ENEMY_FEET - Vector2(size.x / 2.0, size.y) + Vector2(150.0 * _slide(), roundf(sin(_time * 3.0) * 1.5)) + shake
 	if _them == "attack":
 		pos += Vector2(-110, 50) * _lunge_curve()
 	elif _them == "dodge":
 		var o := _dodge_offset(_them_dodge_ok)
 		pos += Vector2(o, -o * 0.3)
+		if o > 2.0:   # afterimages trailing back where it was
+			for k in [0.33, 0.66]:
+				_canvas.draw_texture_rect_region(tex, Rect2((pos - Vector2(o, -o * 0.3) * k).round(), size),
+					Rect2(enemy.variant * size.x, 0, size.x, size.y), Color(0.8, 0.9, 1.0, 0.22 * (1.0 - k)))
 	elif _them == "dazed" and _state == "clash":
 		pos.x += sin(_time * 30.0) * 2.0
 	if _enemy_flash > 0.0:
 		pos.x += _rng.randf_range(-3, 3)
-	Shadows.oval(_canvas, ENEMY_FEET + Vector2(0, -1) + shake, 36)
+	Shadows.oval(_canvas, ENEMY_FEET + Vector2(150.0 * _slide(), -1) + shake, 36)
 	var mod := Color(4, 4, 4) if fmod(_enemy_flash, 0.1) > 0.05 else Color.WHITE
 	var fr: int = (int(_time * 8.0) % 4) if (_them == "attack" and _state == "clash") else [0, 2][int(_time * 2.0) % 2]
-	_canvas.draw_texture_rect_region(tex, Rect2(pos.round(), size), Rect2(enemy.variant * 16, fr * h, 16, h), mod)
+	_canvas.draw_texture_rect_region(tex, Rect2(pos.round(), size), Rect2(enemy.variant * size.x, fr * size.y, size.x, size.y), mod)
 	if _them == "defend" and _state == "clash":
 		_shield_bubble(ENEMY_FEET - Vector2(0, size.y * 0.5), 34, C_DEFEND)
 	if _you == "attack" and _state == "clash" and _dmg_to_enemy > 0 and _t >= IMPACT_AT and _t < IMPACT_AT + 0.25:
@@ -619,41 +705,35 @@ func _draw_enemy(shake: Vector2) -> void:
 
 
 func _draw_hero(shake: Vector2) -> void:
-	var pos := HERO_HOME + shake
+	var pos := HERO_HOME + shake + Vector2(-150.0 * _slide(), 0)
 	if _you == "attack":
 		pos += Vector2(110, -50) * _lunge_curve()
 	elif _you == "dodge":
 		var o := _dodge_offset(_you_dodge_ok)
 		pos += Vector2(-o, -o * 0.3)
-	Shadows.oval(_canvas, HERO_HOME + Vector2(24, 68) + shake, 40)
+	Shadows.oval(_canvas, HERO_HOME + Vector2(24 - 150.0 * _slide(), 68) + shake, 40)
 	var weapon := inventory.best_id("weapon", "atk")
 	var armor := inventory.best_id("armor", "def")
 	var swinging := _you == "attack" and _state == "clash" and weapon != ""
 	var bob := -1.0 if fmod(_time, 1.4) < 0.7 else 0.0
 	HeroLook.use(player)
-	HeroLook.draw(_canvas, pos.round(), 3.0, 1, 0, armor, "" if swinging else weapon, bob, Vector2.ZERO, swinging)
+	HeroLook.draw_big(_canvas, (pos + HERO_BIG_OFF).round(), 1, armor, weapon, bob * 2.0, Vector2.ZERO, swinging)
 	if swinging:
 		_draw_swing(pos.round(), weapon, armor, bob)
 	if _you == "defend" and _state == "clash":
 		_shield_bubble(HERO_HOME + Vector2(24, 34), 40, C_DEFEND)
 	if _them == "attack" and _state == "clash" and _dmg_to_you > 0:
 		_draw_claws(HERO_HOME + Vector2(24, 34))
-	if _you == "item" and _state == "clash" and _heal > 0:
-		for i in 10:
-			var ph := fmod(_t * 0.9 + i * 0.1, 1.0)
-			var x := HERO_HOME.x + 8 + fmod(i * 17.0, 32.0)
-			_canvas.draw_rect(Rect2(x, HERO_HOME.y + 60 - ph * 60, 2, 2), Color(C_GREEN, 1.0 - ph))
+
 
 
 ## The swing: the hero's right arm comes off the body and swings from the
 ## shoulder, with the weapon gripped in its hand -- shoulder, arm, hand and
 ## weapon move together as one piece, up over the head and down through the
-## enemy in a single smooth arc.
-const ARM_PIVOT := Vector2(14.5, 14.5)   # right shoulder, in the 16 x 24 back-view frame
-const ARM_HAND := 4.0                     # shoulder -> hand, frame pixels
-const GRIP := Vector2(2.5, 12.5)          # where the hand holds a gear.png weapon (its handle)
+## enemy in a single smooth arc. (The big hero: hero_big_arm.png, gear_big.png.)
+const ARM_HAND := 15.0                    # shoulder -> hand, pixels
 const GRIP_TURN := 1.658                  # the weapon's angle in the hand (95 degrees)
-const BLADE_TIP := Vector2(13, 2)         # roughly the far end of a gear.png weapon
+const BLADE_TIP := Vector2(54, 7)         # roughly the far end of a gear_big.png weapon
 
 
 ## Which way the arm points, shoulder to hand (radians; PI/2 = hanging down).
@@ -671,7 +751,7 @@ func _swing_angle() -> float:
 
 
 func _arm_xf(pivot: Vector2, phi: float) -> Transform2D:
-	return Transform2D(phi - PI / 2.0, Vector2(3, 3), 0.0, pivot)
+	return Transform2D(phi - PI / 2.0, Vector2(1, 1), 0.0, pivot)
 
 
 func _weapon_xf(pivot: Vector2, phi: float) -> Transform2D:
@@ -679,21 +759,22 @@ func _weapon_xf(pivot: Vector2, phi: float) -> Transform2D:
 
 
 func _draw_swing(hero_pos: Vector2, weapon: String, armor: String, bob: float) -> void:
-	var pivot := hero_pos + (ARM_PIVOT + Vector2(0, bob)) * 3.0
+	var pivot := hero_pos + HERO_BIG_OFF + HeroLook.BIG_SHOULDER + Vector2(0, bob * 2.0)
 	var phi := _swing_angle()
 	# slash trail, traced by the blade's tip, right around the impact
 	if _t > IMPACT_AT * 0.55 and _t < IMPACT_AT + 0.22:
 		var a := clampf(1.0 - absf(_t - IMPACT_AT) / 0.3, 0.0, 1.0)
 		for i in 16:
 			var ph := lerpf(deg_to_rad(-100.0), phi, i / 15.0)
-			var tip: Vector2 = _weapon_xf(pivot, ph) * (BLADE_TIP - GRIP)
+			var tip: Vector2 = _weapon_xf(pivot, ph) * (BLADE_TIP - HeroLook.BIG_GRIP)
 			_canvas.draw_rect(Rect2(tip.round() - Vector2(1, 1), Vector2(3, 3)), Color(1, 1, 0.9, a * (0.25 + i / 20.0)))
 	# the weapon, then the arm over it (the hand closes over the handle)
 	_canvas.draw_set_transform_matrix(_weapon_xf(pivot, phi))
-	_canvas.draw_texture_rect_region(HeroLook.GEAR_TEX, Rect2(-GRIP, Vector2(16, 16)),
-		Rect2(HeroLook.WEAPONS[weapon] * 16, 0, 16, 16))
+	_canvas.draw_texture_rect_region(HeroLook.GEAR_BIG_TEX, Rect2(-HeroLook.BIG_GRIP, Vector2(64, 64)),
+		Rect2(HeroLook.WEAPONS[weapon] * 64, 0, 64, 64))
 	_canvas.draw_set_transform_matrix(_arm_xf(pivot, phi))
-	_canvas.draw_texture_rect_region(HeroLook.body_tex(), Rect2(-1.5, -0.5, 3, 6), HeroLook.back_arm_src(armor))
+	_canvas.draw_texture_rect_region(HeroLook.BIG_ARM_TEX, Rect2(-HeroLook.BIG_ARM_SHOULDER, HeroLook.BIG_ARM),
+		HeroLook.big_arm_src(armor))
 	_canvas.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
@@ -712,9 +793,8 @@ func _draw_claws(center: Vector2) -> void:
 ## body sinks and breaks into drifting motes while smoke billows up and out.
 func _draw_dissolve(shake: Vector2) -> void:
 	var t := _die_t / DIE_TIME
-	var h := 24 if enemy.kind == "demon" else 16
-	var tex: Texture2D = Enemy.INSECTS_TEX if enemy.kind == "insect" else Enemy.DEMONS_TEX
-	var size := Vector2(48, h * 3)
+	var tex := _enemy_tex()
+	var size := _enemy_size()
 	var base := ENEMY_FEET + shake
 	# billowing smoke behind and around
 	for i in 16:
@@ -732,12 +812,12 @@ func _draw_dissolve(shake: Vector2) -> void:
 	var body_a := clampf(1.0 - t * 1.6, 0.0, 1.0)
 	if body_a > 0.0:
 		var flash := Color(5, 5, 5, body_a) if t < 0.08 else Color(1.0, 0.75, 1.2, body_a)
-		var rows := h
+		var rows := int(size.y / 3.0)
 		for row in rows:
 			var wob := sin(row * 1.7 + _time * 20.0) * 6.0 * t
 			var lift := -row * 0.0 + t * 10.0 * (1.0 - float(row) / rows)
-			var dst := Rect2(base + Vector2(-24 + wob, -size.y + row * 3 - lift + t * 18.0), Vector2(48, 3))
-			_canvas.draw_texture_rect_region(tex, Rect2(dst.position.round(), dst.size), Rect2(enemy.variant * 16, row, 16, 1), flash)
+			var dst := Rect2(base + Vector2(-size.x / 2.0 + wob, -size.y + row * 3 - lift + t * 18.0), Vector2(size.x, 3))
+			_canvas.draw_texture_rect_region(tex, Rect2(dst.position.round(), dst.size), Rect2(enemy.variant * size.x, row * 3, size.x, 3), flash)
 	# motes of its essence drifting up
 	for i in 24:
 		var ph := fmod(t * 1.2 + i * 0.041, 1.0)
@@ -902,7 +982,7 @@ func _draw_enemy_panel() -> void:
 
 
 func _draw_player_panel() -> void:
-	var r := Rect2(196, 118, 156, 46)
+	var r := Rect2(200, 118, 152, 33)
 	UiKit.panel(_canvas, r)
 	PixelFont.draw(_canvas, r.position + Vector2(7, 6), "YOU", C_TEXT)
 	for i in inventory.max_health:
@@ -910,16 +990,18 @@ func _draw_player_panel() -> void:
 			Color("e0453f") if i < inventory.health else Color("3a2433"))
 	UiKit.chip(_canvas, r.position + Vector2(7, 18), "ATK " + str(_your_atk()), C_ATTACK)
 	UiKit.chip(_canvas, r.position + Vector2(40, 18), "DEF " + str(_your_def()), C_DEFEND)
-	PixelFont.draw(_canvas, r.position + Vector2(7, 32), "LIGHT", C_DIM)
+	PixelFont.draw(_canvas, r.position + Vector2(76, 19), "LIGHT", C_DIM)
 	var frac := lantern.fraction()
-	UiKit.bar(_canvas, Rect2(r.position + Vector2(32, 32), Vector2(r.size.x - 40, 4)), frac,
+	UiKit.bar(_canvas, Rect2(r.position + Vector2(100, 19), Vector2(r.size.x - 107, 4)), frac,
 		Color("f5c542") if frac > 0.25 else Color("e0453f"))
 
 
 func _draw_bottom() -> void:
+	if _state == "choose":
+		_draw_deck()
+		return
 	var r := Rect2(8, 172, 344, 60)
 	UiKit.panel(_canvas, r)
-	var text_w := 184.0
 	var tx := r.position + Vector2(8, 8)
 	match _state:
 		"messages":
@@ -928,13 +1010,7 @@ func _draw_bottom() -> void:
 				if fmod(_time, 0.8) < 0.5:
 					PixelFont.draw(_canvas, r.end - Vector2(12, 10), "Z", C_DIM)
 		"choose":
-			_text_block(tx, _tell, text_w, C_PICK)
-			_text_block(tx + Vector2(0, 22), _hint(_options[_sel]), text_w, C_DIM)
-			for i in _options.size():
-				var move: String = _options[i]
-				var lift := -4.0 if i == _sel else 0.0
-				var pos := Vector2(r.position.x + 196 + i * (CARD_SIZE.x + 1), r.position.y + 6 + lift)
-				_card(pos, move, true, false, 1.0, 1.0, i == _sel)
+			pass
 		"items":
 			PixelFont.draw(_canvas, tx, "USE WHAT? IT TAKES YOUR TURN, BUT ATTACKS CAN'T HURT YOU.", C_DIM)
 			for i in _item_options.size():
@@ -953,18 +1029,107 @@ func _draw_bottom() -> void:
 			_text_block(tx, line, r.size.x - 16, C_TEXT)
 
 
-func _hint(move: String) -> String:
+## Choosing your move: what it's giving away on a banner, then ATTACK,
+## DEFEND and DODGE as three big cards, and the bag beneath them.
+func _draw_deck() -> void:
+	var a := clampf((_intro - INTRO_TIME * 0.5) / 0.3, 0.0, 1.0)
+	if a <= 0.0:
+		return
+	# the tell, on a banner
+	var lines := Dialog.wrap_text(_tell, 300)
+	var bh := 4.0 + lines.size() * 8.0
+	var band := Rect2(24, DECK_Y - 9 - bh, 312, bh)
+	_canvas.draw_rect(band, Color(0.02, 0.01, 0.04, 0.78 * a))
+	_canvas.draw_rect(Rect2(band.position, Vector2(band.size.x, 1)), Color(C_PICK, 0.45 * a))
+	_canvas.draw_rect(Rect2(band.position + Vector2(0, band.size.y - 1), Vector2(band.size.x, 1)), Color(C_PICK, 0.25 * a))
+	for i in lines.size():
+		var line: String = lines[i]
+		PixelFont.draw(_canvas, Vector2(floorf(180 - PixelFont.width_of(line) / 2.0), band.position.y + 3 + i * 8), line, Color(C_PICK, a))
+	var round_txt := "ROUND " + str(_round)
+	PixelFont.draw(_canvas, Vector2(352 - PixelFont.width_of(round_txt), 4), round_txt, Color(C_DIM, a))
+	for i in DECK.size():
+		_big_card(_deck_rect(i), DECK[i], i == _sel and not _on_bag, a)
+	_draw_bag_button(a)
+
+
+func _big_text(pos: Vector2, text: String, col: Color, s: float = 2.0) -> void:
+	_canvas.draw_set_transform(pos.round(), 0.0, Vector2(s, s))
+	PixelFont.draw(_canvas, Vector2.ZERO, text, col, Color(0, 0, 0, col.a * 0.8))
+	_canvas.draw_set_transform(Vector2.ZERO)
+
+
+## One of the three moves, big: its name, its icon, the number that matters,
+## and what happens against each of the creature's answers.
+func _big_card(r: Rect2, move: String, picked: bool, a: float) -> void:
+	var col := _move_color(move)
+	var pulse := 0.5 + 0.5 * sin(_time * 6.0)
+	if picked:
+		UiKit.glow(_canvas, r.get_center(), r.size.x * 0.62, col, 0.8 * a)
+	_canvas.draw_rect(r.grow(1), Color(0.02, 0.01, 0.04, a))
+	_canvas.draw_rect(r, Color(C_PICK.lerp(col, 0.35 * pulse) if picked else col.darkened(0.5), a))
+	_canvas.draw_rect(r.grow(-1), Color(Color("100b18"), a))
+	for i in 6:   # the body darkens toward the bottom, tinted by the move
+		_canvas.draw_rect(Rect2(r.position + Vector2(1, 13 + i * 6), Vector2(r.size.x - 2, 6)),
+			Color(col, (0.09 - i * 0.012) * (1.6 if picked else 1.0) * a))
+	var head := Rect2(r.position + Vector2(1, 1), Vector2(r.size.x - 2, 12))
+	_canvas.draw_rect(head, Color(col, (0.38 if picked else 0.16) * a))
+	_canvas.draw_rect(Rect2(head.position, Vector2(head.size.x, 1)), Color(1, 1, 1, 0.16 * a))
+	var label: String = MOVE_NAMES[move]
+	var name_col := col.lightened(0.35) if picked else col.darkened(0.1)
+	_big_text(head.position + Vector2(floorf((head.size.x - PixelFont.width_of(label) * 2) / 2.0), 1), label, Color(name_col, a))
+	# the icon, twice size, in its own frame
+	var ib := Rect2(r.position + Vector2(4, 15), Vector2(32, 32))
+	_canvas.draw_rect(ib.grow(1), Color(col.darkened(0.55), a))
+	_canvas.draw_rect(ib, Color(Color("07050b"), a))
+	_canvas.draw_set_transform(ib.get_center().round(), 0.0, Vector2(2, 2))
+	_move_icon(Vector2.ZERO, move, false, a)
+	_canvas.draw_set_transform(Vector2.ZERO)
+	# the number that matters, then the two outcomes
+	var tx := r.position.x + 41
+	var big := ""
+	var unit := ""
+	var l1 := ""
+	var l2 := ""
 	match move:
 		"attack":
-			return "HIT FOR " + str(_your_atk()) + ". IF IT DEFENDS: " + str(maxi(_your_atk() - _enemy_def(), 0)) + \
-				". IF IT DODGES: 50% TO MISS."
+			big = str(_your_atk()); unit = "ATK"
+			l1 = "HITS FOR " + str(_your_atk())
+			l2 = "GUARDED: " + str(maxi(_your_atk() - _enemy_def(), 0))
 		"defend":
-			return "IF IT ATTACKS YOU TAKE " + str(maxi(_enemy_atk() - _your_def(), 0)) + " INSTEAD OF " + str(_enemy_atk()) + "."
+			big = str(_your_def()); unit = "DEF"
+			l1 = "IF HIT: -" + str(maxi(_enemy_atk() - _your_def(), 0))
+			l2 = "NOT -" + str(_enemy_atk())
 		"dodge":
-			return "50/50: AVOID ITS ATTACK COMPLETELY, OR TAKE THE FULL " + str(_enemy_atk()) + "."
-		"item":
-			return "DRINK A POTION OR FLARE YOUR LANTERN. ATTACKS CAN'T HURT YOU THIS TURN."
-	return ""
+			big = str(int(DODGE_CHANCE * 100)) + "%"; unit = ""
+			l1 = "DODGED: -0"
+			l2 = "ELSE: -" + str(_enemy_atk())
+	_big_text(Vector2(tx, r.position.y + 16), big, Color(C_TEXT if picked else C_TEXT.darkened(0.25), a))
+	if unit != "":
+		PixelFont.draw(_canvas, Vector2(tx + PixelFont.width_of(big) * 2 + 3, r.position.y + 21), unit, Color(col, a))
+	PixelFont.draw(_canvas, Vector2(tx, r.position.y + 31), l1, Color(C_TEXT if picked else C_DIM, a))
+	PixelFont.draw(_canvas, Vector2(tx, r.position.y + 39), l2, Color(C_DIM, a))
+	if not picked:
+		_canvas.draw_rect(r, Color(0.02, 0.01, 0.04, 0.3 * a))
+
+
+## The bag, beneath the deck: down to reach it, up to go back.
+func _draw_bag_button(a: float) -> void:
+	var ok := "item" in _options
+	var r := BAG_RECT
+	var edge := C_PICK if _on_bag else (UiKit.C_EDGE if ok else Color("3a3448"))
+	_canvas.draw_rect(r.grow(1), Color(0.02, 0.01, 0.04, a))
+	_canvas.draw_rect(r, Color(edge, a))
+	_canvas.draw_rect(r.grow(-1), Color(Color("2a2038") if _on_bag else Color("17121f"), a))
+	_canvas.draw_texture_rect_region(BAG_TEX, Rect2(r.position + Vector2(3, -4), Vector2(16, 16)), Rect2(0, 0, 16, 16),
+		Color(1, 1, 1, a * (1.0 if ok else 0.4)))
+	PixelFont.draw(_canvas, r.position + Vector2(23, 4), "BAG", Color(C_PICK if _on_bag else (C_TEXT if ok else C_DIM), a))
+	var hint := "Z OPEN" if _on_bag else "DOWN"
+	PixelFont.draw(_canvas, Vector2(r.end.x - 4 - PixelFont.width_of(hint), r.position.y + 4), hint, Color(C_DIM, a))
+	if not _on_bag and ok and fmod(_time, 1.0) < 0.6:   # a little arrow pointing down at it
+		var c := Vector2(r.get_center().x, r.position.y - 3)
+		_canvas.draw_rect(Rect2(c + Vector2(-2, -1), Vector2(5, 1)), Color(C_DIM, a))
+		_canvas.draw_rect(Rect2(c + Vector2(-1, 0), Vector2(3, 1)), Color(C_DIM, a))
+		_canvas.draw_rect(Rect2(c + Vector2(0, 1), Vector2(1, 1)), Color(C_DIM, a))
 
 
 func _text_block(pos: Vector2, text: String, width: float, col: Color) -> void:

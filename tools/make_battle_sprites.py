@@ -1,12 +1,16 @@
 """Builds the big battle sprites -- the creatures as you see them up close:
 
-    assets/insects_battle.png   48 x 48 frames, one column per insect
-    assets/demons_battle.png    48 x 72 frames, one column per demon
+    assets/insects_battle.png   64 x 64 frames, one column per insect
+    assets/demons_battle.png    64 x 96 frames, one column per demon
+
+The designs are written on a 48-unit grid (48 x 48 insects, 48 x 72 demons)
+and rendered at K = 4/3, so the forms get finer shading, grain and cast
+shadows rather than fatter pixels.
 
 Columns follow the same order as tools/make_creatures.py (and CreatureData);
 rows are the 4 animation frames, as in the small sheets. The art is drawn by
 pixkit.py from the designs in battle_insects.py and battle_demons.py; the
-Weeper and the Bride keep their small sprite, scaled up 3x.
+The Weeper and the Bride have their own designs too.
 Run:  python3 tools/make_battle_sprites.py
 """
 from pathlib import Path
@@ -63,30 +67,41 @@ DEMONS = [
     ("HOLLOW KING", "hollow", _p(cloak="4a1828", bone="f6f0e0"), {"crown": True}),
     ("MAW", "maw", _p(skin="cbb89c"), {}),
     ("GRAVE MAW", "maw", _p(skin="a0b098"), {}),
-    ("WEEPER", None, None, {}),   # the small sprite, scaled up
-    ("BRIDE", None, None, {}),
+    ("WEEPER", "weeper", _p(cloak="2e2836", skin="9a90a0", hair="1c1820", tear="7a1020"), {}),
+    ("BRIDE", "bride", _p(cloak="d8d0c4", skin="c8bcb0", hair="2a2028", veil="e8e2da", tear="7a1020",
+                         flower="6a5a4a"), {"bride": True}),
 ]
+# the creatures added with the rarity system (designs in battle_extra.py)
+import battle_extra  # noqa: E402
+battle_extra.register(battle_insects, battle_demons)
+INSECTS += battle_extra.INSECTS
+DEMONS += battle_extra.DEMONS
+
 FRAMES = 4
+K = 4 / 3
+IW = IH = 64          # insect frame
+DW, DH = 64, 96       # demon frame
+
+
+def sprite(w, h):
+    return Sprite(w, h, k=K, grain=0.16, cast=True)
 
 
 def main():
-    ins = Image.new("RGBA", (48 * len(INSECTS), 48 * FRAMES), (0, 0, 0, 0))
+    ins = Image.new("RGBA", (IW * len(INSECTS), IH * FRAMES), (0, 0, 0, 0))
     for i, (name, design, pal) in enumerate(INSECTS):
         for f in range(FRAMES):
-            s = Sprite(48, 48)
+            s = sprite(IW, IH)
             battle_insects.DESIGNS[design](s, f)
-            ins.paste(s.image(pal), (i * 48, f * 48))
-    small = Image.open(ROOT / "assets" / "demons.png").convert("RGBA")
-    dem = Image.new("RGBA", (48 * len(DEMONS), 72 * FRAMES), (0, 0, 0, 0))
+            battle_insects.detail(s, design, f)
+            ins.paste(s.image(pal), (i * IW, f * IH))
+    dem = Image.new("RGBA", (DW * len(DEMONS), DH * FRAMES), (0, 0, 0, 0))
     for i, (name, design, pal, opts) in enumerate(DEMONS):
         for f in range(FRAMES):
-            if design is None:
-                img = small.crop((i * 16, f * 24, i * 16 + 16, f * 24 + 24)).resize((48, 72), Image.NEAREST)
-            else:
-                s = Sprite(48, 72)
-                battle_demons.DESIGNS[design](s, f, opts)
-                img = s.image(pal)
-            dem.paste(img, (i * 48, f * 72))
+            s = sprite(DW, DH)
+            battle_demons.DESIGNS[design](s, f, opts)
+            battle_demons.detail(s, design, f, opts)
+            dem.paste(s.image(pal), (i * DW, f * DH))
     ins.save(ROOT / "assets" / "insects_battle.png")
     dem.save(ROOT / "assets" / "demons_battle.png")
     print(f"wrote {len(INSECTS)} insects, {len(DEMONS)} demons (battle size)")
