@@ -387,7 +387,7 @@ func _spot_rare(e: Enemy, h: Hero) -> void:
 	e.set_meta("spotted", true)
 	var n := String(e.display_name())
 	if t == "LEGENDARY":
-		h.hud.announce(n, "A LEGENDARY CREATURE. FEW HAVE SEEN ONE AND LIVED.", Color("ffd35a"))
+		h.hud.announce(n, "A LEGENDARY CREATURE. FEW HAVE SEEN ONE AND LIVED.", Color("ffd35a"), "LEGENDARY")
 		Sfx.play("dawn", -6.0)
 	else:
 		h.hud.say("SOMETHING RARE: " + ("AN " if n[0] in "AEIOU" else "A ") + n + ".")

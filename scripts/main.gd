@@ -1236,7 +1236,7 @@ func _on_village_entered(h: Hero, vi: int) -> void:
 				world.mapped[y * world.width + x] = 1
 		world.mapped_changed.emit()
 	h.hud.announce(String(v.name), "A VILLAGE. THE LAMPS KEEP THE DARK AT BAY." if first else "SAFE BEHIND THE WALLS.",
-		Color("ffd38a"))
+		Color("ffd38a"), RarityIcon.VILLAGE_TIER)
 	Sfx.play("dawn", -8.0)
 
 

@@ -31,6 +31,7 @@ var _zone_name := ""
 var _zone_sub := ""
 var _deepest := 0
 var _zone_col := Color("f2e6c8")
+var _zone_tier := ""      # the rarity gem beside the banner's title ("" for none: RarityIcon)
 var day: DayCycle   ## set by main
 var lantern: Lantern
 var flares: Flares
@@ -76,10 +77,14 @@ func setup(l: Lantern, f: Flares, w: Wind, p: Player, pk: Pickups, inv: Inventor
 
 
 ## A big title across the top: DAYBREAK, NIGHTFALL...
-func announce(title: String, sub_text: String, col: Color) -> void:
+func announce(title: String, sub_text: String, col: Color, tier: String = "") -> void:
+	if tier == "" and player != null and player.world != null and _zone >= 0 \
+			and _zone < player.world.zone_names.size() and title == player.world.zone_names[_zone]:
+		tier = RarityIcon.land_tier(player.world, _zone)   # (the land you're in, named again)
 	_zone_name = title
 	_zone_sub = sub_text
 	_zone_col = col
+	_zone_tier = tier
 	_zone_t = 0.0
 
 
@@ -139,6 +144,7 @@ func _process(delta: float) -> void:
 				_zone_name = player.world.zone_names[z]
 				_zone_sub = "DEPTH " + str(doors.depth_at(player.cell))
 				_zone_col = Color("f2e6c8")
+				_zone_tier = RarityIcon.land_tier(player.world, z)
 				_zone_t = 0.0
 		# Through a door into deeper ground: the labyrinth gets meaner.
 		var d := doors.depth_at(player.cell)
@@ -147,6 +153,7 @@ func _process(delta: float) -> void:
 			_zone_name = "DEPTH " + str(d)   # (never how many there are: the dark has no bottom you can see)
 			_zone_sub = "THE CREATURES HERE GROW STRONGER - AND SO DOES THE LOOT"
 			_zone_col = Color("f2e6c8")
+			_zone_tier = ""
 			_zone_t = 0.0
 	if _zone_t >= 0.0:
 		_zone_t += delta
@@ -358,12 +365,17 @@ func _draw_hud() -> void:
 		var za := clampf(_zone_t / 0.6, 0.0, 1.0) * clampf((4.0 - _zone_t) / 0.8, 0.0, 1.0)
 		var zw := PixelFont.width_of(_zone_name)
 		var zy := 46.0
-		var line_w := maxf(zw, PixelFont.width_of(_zone_sub)) + 24.0
+		var gem := RarityIcon.size_of(_zone_tier) if _zone_tier != "" else Vector2i.ZERO
+		var gap := gem.x + 4 if gem.x > 0 else 0   # the land's rarity gem, just before its name
+		var line_w := maxf(zw + gap, PixelFont.width_of(_zone_sub)) + 24.0
 		_canvas.draw_rect(Rect2(floorf((screen.x - line_w) / 2), zy - 4, line_w, 22), Color(0.03, 0.02, 0.05, 0.6 * za))
 		_canvas.draw_rect(Rect2(floorf((screen.x - line_w) / 2), zy + 8, line_w, 1), Color(0.9, 0.8, 0.6, 0.5 * za))
 		var sw := PixelFont.width_of(_zone_sub)
 		PixelFont.draw(_canvas, Vector2(floorf((screen.x - sw) / 2), zy + 11), _zone_sub, Color(Color("b8a8d0"), za))
-		_canvas.draw_set_transform(Vector2(floorf((screen.x - zw) / 2), zy), 0.0, Vector2.ONE)
+		var zx := floorf((screen.x - zw - gap) / 2)
+		if gap > 0:
+			RarityIcon.draw(_canvas, Vector2(zx, zy + 2 - floorf((gem.y - 1) / 2.0)), _zone_tier, _time, za)
+		_canvas.draw_set_transform(Vector2(zx + gap, zy), 0.0, Vector2.ONE)
 		PixelFont.draw(_canvas, Vector2.ZERO, _zone_name, Color(_zone_col, za), Color(0, 0, 0, za))
 		_canvas.draw_set_transform(Vector2.ZERO)
 

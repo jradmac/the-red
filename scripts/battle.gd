@@ -969,6 +969,11 @@ func _draw_enemy_panel() -> void:
 	var r := Rect2(8, 10, 172, 46)
 	UiKit.panel(_canvas, r)
 	PixelFont.draw(_canvas, r.position + Vector2(7, 6), enemy.display_name(), C_TEXT)
+	# how rare it is: a little gem after its name (RarityIcon)
+	var tier := String(enemy.info.get("tier", "COMMON"))
+	var gem := RarityIcon.size_of(tier)
+	RarityIcon.draw(_canvas, r.position + Vector2(7 + PixelFont.width_of(enemy.display_name()) + 4,
+		8 - floorf((gem.y - 1) / 2.0)), tier, Time.get_ticks_msec() / 1000.0)
 	var hp_txt := "HP " + str(maxi(enemy.hp, 0)) + "/" + str(enemy.max_hp)
 	PixelFont.draw(_canvas, Vector2(r.end.x - 7 - PixelFont.width_of(hp_txt), r.position.y + 6), hp_txt, C_TEXT)
 	UiKit.bar(_canvas, Rect2(r.position + Vector2(7, 14), Vector2(r.size.x - 14, 4)),
