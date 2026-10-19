@@ -69,8 +69,11 @@ func update(targets: Array[Vector3]) -> void:
 			best = minf(best, Vector2(x - t.x, z - t.z).length())
 		return best
 	var cands: Array = []   # [dist, painter, 2D position, shaded, shadow width]
+	var cloaks := {}        # the heroes' sprites (by id): the wind tugs at their hoods
 	for h in Hero.all:
 		var pl: Player = h.player
+		if is_instance_valid(pl):
+			cloaks[pl.get_instance_id()] = pl
 		if is_instance_valid(pl) and pl.visible:
 			# (you carry your own light: never a dark shape in your own lantern's glow)
 			cands.append([0.0, _paint_node.bind(pl), pl.position, false, 0.42, pl.get_instance_id(), pl.climb_lift])
@@ -174,6 +177,9 @@ func update(targets: Array[Vector3]) -> void:
 		_jobs.append([i, c[1]])
 		var o := _slot_origin(i)
 		s.region_rect = Rect2(o, SLOT)
+		var dm := s.material_override as ShaderMaterial
+		dm.set_shader_parameter("flutter", _flutter(cloaks.get(c[5])))
+		dm.set_shader_parameter("flutter_rows", Vector2(o.y + PIVOT.y - 26.0, o.y + PIVOT.y - 7.0))
 		# the billboard stands on its feet; its depth is worked out per pixel as
 		# an upright figure's (sprite3d_depth.gdshader), so walls in front cover it
 		var at := foot
@@ -195,6 +201,23 @@ func update(targets: Array[Vector3]) -> void:
 			sh.position = ground + Vector3(0, 0.02, 0)
 			sh.scale = Vector3(w * 2.0, 1.0, w * 1.3)
 	_canvas.queue_redraw()
+
+
+## How the wind tugs at a hero's hood and cloak (sprite3d_depth.gdshader's
+## flutter): only when it's really blowing -- a puff, a gust -- not the
+## light draft between puffs.
+func _flutter(pl) -> Vector2:
+	var wind = view.main.get("wind") if pl != null else null
+	if wind == null or not is_instance_valid(pl):
+		return Vector2.ZERO
+	var w: Vector2 = wind.wind_at(pl.cell)
+	var k := w.length()
+	if k < 0.5:
+		return Vector2.ZERO
+	k = minf(k, 1.6)
+	if absf(w.x) > 0.3 * w.length():
+		return Vector2(signf(w.x) * k, 0.0)
+	return Vector2(0.0, k)
 
 
 func _add_sprite() -> void:

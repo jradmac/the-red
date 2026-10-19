@@ -8,6 +8,12 @@ uniform vec2 atlas = vec2(2.0, 6.0);        // clumps across, lands down
 uniform vec4 pushers[8];                    // x, z, running (0/1), strength
 uniform float ahead = 0.55;                 // as sprite3d_depth.gdshader: the upright plane's place past the roots
 
+// the wind's puffs and gusts (wind_fx.gd): a point on each one's front and its
+// push (direction x strength); then its leading edge, the air trailing behind
+// it and how wide it is (tiles)
+uniform vec4 puffs[6];
+uniform vec4 puff_shape[6];
+
 varying vec2 cell_uv;
 varying float wave;
 varying float tip;
@@ -26,6 +32,22 @@ void vertex() {
 	float g = dot(base.xz, WIND) * 0.11 - TIME * 0.35;
 	wave = pow(max(0.0, sin(g * 6.2832)), 8.0);
 	vec2 bend = WIND * (sway + wave * 0.17);
+	// a puff running down the corridor: the grass bends in a wave just ahead of
+	// it and stays bent, fluttering, in the air behind it
+	for (int i = 0; i < 6; i++) {
+		vec4 pf = puffs[i];
+		float s = length(pf.zw);
+		if (s > 0.001) {
+			vec2 dn = pf.zw / s;
+			vec2 rel = base.xz - pf.xy;
+			float d = dot(rel, dn);
+			float k = d > 0.0 ? pow(clamp(1.0 - d / max(puff_shape[i].x, 0.01), 0.0, 1.0), 1.5)
+				: pow(clamp(1.0 + d / max(puff_shape[i].y, 0.01), 0.0, 1.0), 1.5);
+			k *= clamp(1.0 - (abs(dot(rel, vec2(-dn.y, dn.x))) - puff_shape[i].z) / 1.5, 0.0, 1.0) * min(s, 1.0);
+			bend += dn * k * (0.26 + sin(TIME * 16.0 + ph + base.x * 2.0) * 0.06);
+			wave = max(wave, k * 0.8);
+		}
+	}
 	float press = 0.0;
 	for (int i = 0; i < 8; i++) {
 		vec4 p = pushers[i];

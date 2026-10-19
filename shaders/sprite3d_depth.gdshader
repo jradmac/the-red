@@ -12,6 +12,12 @@ uniform sampler2D atlas : source_color, filter_nearest;
 // how far in front of the thing's tile centre the upright plane stands (tiles):
 // just past the front edge, so walls beside it never cut into its sides
 uniform float ahead = 0.55;
+// the wind tugging at a cloak (SpriteHost, from Wind): x = which way it blows
+// across the screen, as hard as it blows (- left, + right); y = how hard it
+// blows when it's straight up or down the screen (both edges flutter then).
+// flutter_rows: the atlas rows (pixels) the cloth is in.
+uniform vec2 flutter = vec2(0.0);
+uniform vec2 flutter_rows = vec2(0.0);
 
 void vertex() {
 	// billboard, keeping the node's scale (the pixel-exact size SpriteHost sets)
@@ -25,6 +31,26 @@ void vertex() {
 
 void fragment() {
 	vec4 t = texture(atlas, UV);
+	if (t.a < 0.5 && (flutter.x != 0.0 || flutter.y > 0.0)) {
+		// in the wind, the edge of the cloth flicks out a pixel or two downwind,
+		// in ripples running down it (only where there's nothing already)
+		vec2 px = vec2(textureSize(atlas, 0));
+		float row = floor(UV.y * px.y);
+		if (row >= flutter_rows.x && row <= flutter_rows.y) {
+			float pow_ = max(abs(flutter.x), flutter.y);
+			float band = fract((row - flutter_rows.x) * 0.22 - TIME * (3.0 + 2.5 * pow_));
+			float reach = band < 0.45 ? (pow_ > 1.1 ? 2.0 : 1.0) : (band < 0.7 && pow_ > 0.8 ? 1.0 : 0.0);
+			float side = flutter.x != 0.0 ? sign(flutter.x) : (fract(row * 0.5) < 0.5 ? 1.0 : -1.0);
+			for (float k = 1.0; k <= 2.0; k += 1.0) {
+				if (k <= reach) {
+					vec4 c = texture(atlas, UV - vec2(side * k / px.x, 0.0));
+					if (c.a >= 0.5) {
+						t = vec4(c.rgb * 0.85, 1.0);
+					}
+				}
+			}
+		}
+	}
 	if (t.a < 0.5) {
 		discard;
 	}
