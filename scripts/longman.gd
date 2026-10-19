@@ -27,9 +27,15 @@ const SHEET: Texture2D = preload("res://assets/longman.png")
 const FRAME := Vector2i(80, 80)
 const FRAMES := {
 	"idle": [0, 1], "tilt": [2, 3], "walk": [4, 5, 6, 7], "drop": [8], "crawl": [9, 10, 11, 12], "lunge": [13],
-	"climb_back": [14, 15], "over": [16, 17], "down": [18, 19], "toward": [20, 21],
+	"climb_back": [14, 15], "over": [16, 17], "down": [18, 19], "toward": [20, 36, 21, 37],
 	"perch": [22, 23], "scale": [24, 25, 26, 27], "descend": [28, 29, 30, 31],
+	"away": [32, 33, 34, 35], "lunge_toward": [38], "lunge_away": [39],
 }
+## Crawling, the frames step with the ground it actually covers (no sliding):
+## one frame per this many tiles. Which way it faces follows its heading,
+## smoothed, so a diagonal path doesn't flick between views.
+const GAIT_STEP := 0.21
+const HEAD_FOLLOW := 0.45      ## tiles crawled to swing its heading all the way round
 
 # --- Tuning -------------------------------------------------------------------------------
 const APPROACH_SPEED := 2.4      ## tiles per second, coming for you
@@ -76,6 +82,10 @@ var _glow: OmniLight3D
 var _shown_frame := 0
 var _last_hero := Vector2.ZERO
 var _flip := false
+var _head := Vector2(0, 1)       ## which way it's heading (x, z), smoothed
+var _gait := 0.0                 ## tiles crawled (steps the frames)
+var _last_pos := Vector3.ZERO
+var _view := "crawl"             ## crawl (side), toward or away
 
 static var _astar: AStarGrid2D
 static var _astar_world: World
@@ -461,10 +471,34 @@ func _dread(delta: float) -> void:
 
 # --- Drawing ------------------------------------------------------------------------------
 
+## Which view of the crawl suits its heading: away from you up the screen,
+## toward you down it, else from the side -- with a margin so it doesn't
+## flicker between two when heading diagonally.
+func _crawl_view() -> String:
+	var y := _head.y
+	match _view:
+		"away":
+			if y > -0.45: _view = "crawl"
+		"toward":
+			if y < 0.45: _view = "crawl"
+		_:
+			if y < -0.66: _view = "away"
+			elif y > 0.66: _view = "toward"
+	return _view
+
+
 func _pick_frame() -> void:
 	var key := "idle"
 	var rate := 0.08
 	var flip := false
+	var mv := Vector2(pos.x - _last_pos.x, pos.z - _last_pos.z)
+	_last_pos = pos
+	if mv.length() > 0.0005 and mv.length() < 1.0:
+		# turns toward where it's going (by angle: it can turn right round), quicker the further it crawls
+		var turn := wrapf(mv.angle() - _head.angle(), -PI, PI)
+		_head = Vector2.from_angle(_head.angle() + turn * minf(1.0, mv.length() / HEAD_FOLLOW))
+		_gait += mv.length()
+	var by_gait := false
 	match state:
 		"watch":
 			var cyc := fmod(_anim, 5.0)
@@ -473,8 +507,13 @@ func _pick_frame() -> void:
 		"drop":
 			key = "drop"
 		"lunge":
-			key = "lunge"
-			flip = face_x < 0
+			# at you from whichever side it's on: straight at you, up the screen away, or across
+			var rel := _hero_pos() - Vector2(pos.x, pos.z)
+			if absf(rel.y) > absf(rel.x) * 1.2:
+				key = "lunge_toward" if rel.y > 0.0 else "lunge_away"
+			else:
+				key = "lunge"
+				flip = face_x < 0
 		"feeding":
 			key = "perch"
 			rate = 0.35
@@ -492,13 +531,15 @@ func _pick_frame() -> void:
 				elif dir.y < 0: key = "climb_back"
 				else:
 					key = "descend"; flip = face_x < 0; rate = 0.08
-			elif dir.y > 0 and dir.x == 0:
-				key = "toward"; rate = 0.16
 			else:
-				key = "crawl"; flip = face_x < 0
-				rate = 0.08 if state == "approach" else 0.13
+				key = _crawl_view()
+				flip = key == "crawl" and _head.x < 0.0
+				by_gait = true
 	var frames: Array = FRAMES[key]
-	_shown_frame = frames[int(_anim / rate) % frames.size()]
+	if by_gait:
+		_shown_frame = frames[int(_gait / GAIT_STEP) % frames.size()]
+	else:
+		_shown_frame = frames[int(_anim / rate) % frames.size()]
 	_flip = flip
 
 

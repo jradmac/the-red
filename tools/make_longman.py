@@ -603,10 +603,11 @@ def climb_front_down(phase=0):
 
 
 def crawl_front(phase=0):
-    """On all fours straight at you: head hanging low, elbows high and wide."""
+    """On all fours straight at you: head hanging low, elbows high and wide.
+    phase 0..3 through the gait: 0 and 2 the two reaches, 1 and 3 the passes."""
     f = Frame()
     cx = 32
-    a, b = (0, 4) if phase == 0 else (4, 0)
+    a, b = [(0, 4), (2, 2), (4, 0), (2, 2)][phase % 4]
     leg(f, (cx - 3, 36), (cx - 13, 26 - a), (cx - 16, 70 - a * 0.5), (cx - 17, 74 - a * 0.5), FAR, "far")
     leg(f, (cx + 3, 36), (cx + 13, 26 - b), (cx + 16, 70 - b * 0.5), (cx + 17, 74 - b * 0.5), FAR, "far")
     tatters(f, cx - 4, cx + 4, 35, [3, 5, 2, 4, 3], swing=0.4)
@@ -621,7 +622,107 @@ def crawl_front(phase=0):
     arm(f, (cx + 7.5, 50), (cx + 18, 34 + b), (cx + 22, 70 - b), [(cx + 25, 78 - b), (cx + 23, 79 - b), (cx + 21, 79 - b), (cx + 26.5, 76 - b)])
     lantern(f, (cx - 22, 70.5 - a), drop=1.5, swing=2.5)
     neck_front(f, cx, 55, 51)
-    face_front(f, (cx, 63), tilt=8 if phase else -8, swing=0.2)
+    face_front(f, (cx, 63), tilt=[-8, -3, 8, 3][phase % 4], swing=0.2)
+    return f
+
+
+def crawl_away(phase=0):
+    """On all fours going away from you, seen from behind and above: the hips
+    nearest (the rags of its shroud hanging off them), the knobbed spine
+    running up to the shoulder blades, elbows cocked high and wide, the crown
+    of its head hanging low between them with the hair falling past. The
+    hands plant far ahead; diagonal pairs step together. phase 0..3."""
+    f = Frame()
+    cx = 32
+    la, lb = [(0, 3.5), (1.8, 1.8), (3.5, 0), (1.8, 1.8)][phase % 4]   # lift: left arm + right leg / right arm + left leg
+    sway = [0.0, 0.6, 0.0, -0.6][phase % 4]
+    # far: the arms reaching ahead, up the frame
+    wrists = {}
+    for s, lift in ((-1, la), (1, lb)):
+        sho = (cx + s * 6.6 + sway, 40)
+        elb = (cx + s * 16.5 + sway, 25 - lift)
+        wri = (cx + s * 15.0 + sway * 0.5, 48 - lift * 1.6)
+        tips = [(wri[0] + s * 2.4, wri[1] + 3.2), (wri[0] + s * 0.8, wri[1] + 4.2), (wri[0] - s * 0.9, wri[1] + 3.8), (wri[0] + s * 3.4, wri[1] + 1.6)]
+        arm(f, sho, elb, wri, tips, FAR, "far")
+        wrists[s] = wri
+    lantern(f, (wrists[-1][0] - 1.2, wrists[-1][1] + 1.0), drop=2.2, swing=1.2 - la * 0.4)
+    # the crown of the head, hanging low between the shoulders
+    back_head(f, (cx + sway * 0.6, 32.5), swing=0.5 * (1 if phase % 2 else -1))
+    # the back: hips nearest, the spine up to the shoulders
+    cells = f.group([Frame.blob((cx, 57), 6.4, 4.6), Frame.tube((cx, 55), (cx + sway * 0.5, 44), 4.2, 5.4),
+                     Frame.blob((cx + sway * 0.6, 40.5), 8.0, 5.0)], BK, "back")
+    for s in (-1, 1):   # shoulder blades, standing proud
+        f.group([Frame.blob((cx + sway * 0.6 + s * 4.0, 40.5), 2.7, 3.3, s * 18)], BK, "back", outline=False, bias=0.2)
+        f.line((cx + sway * 0.6 + s * 1.6, 38), (cx + sway * 0.6 + s * 5.4, 43.5), BK[1], cells)
+    for i, y in enumerate(range(37, 56, 2)):   # the spine's knuckles
+        x = cx + sway * 0.6 * (1 - (y - 37) / 19.0)
+        f.put((x, y), BK[7] if i % 2 == 0 else BK[5])
+        f.put((x, y + 1), BK[1])
+        f.put((x + 1, y), BK[2])
+    for i in range(4):   # ribs through the flanks
+        for s in (-1, 1):
+            f.line((cx + s * 2.2, 44 + i * 2.2), (cx + s * 5.8, 45.2 + i * 2.3), BK[2 if s < 0 else 1], cells)
+    for s in (-1, 1):   # hip bones
+        f.put((cx + s * 4.8, 55), BK[7] if s < 0 else BK[5], cells)
+        f.put((cx + s * 4.2, 54), BK[6] if s < 0 else BK[4], cells)
+    tatters(f, cx - 4.6, cx + 4.6, 59, [3, 6, 4, 7, 4], swing=sway)
+    # lank hair from the crown, falling over its shoulders and down its back
+    for i, u in enumerate((-3.2, -1.6, -0.2, 1.4, 2.9)):
+        dangle(f, (cx + sway * 0.6 + u, 28.5 + abs(u) * 0.5), 9 + (i * 3) % 5, swing=(0.6 if i % 2 else -0.6) + sway, out=(u * 0.15, 0.3))
+    # near: the legs, knees thrown out wide, long feet planted toward you
+    for s, lift in ((-1, lb), (1, la)):
+        leg(f, (cx + s * 4.2, 58), (cx + s * 14.5, 53 - lift), (cx + s * 12.5, 74 - lift * 0.7), (cx + s * 11.0, 78 - lift * 0.7), BK, "back")
+    return f
+
+
+def lunge_toward():
+    """Springing straight at you: the arms flung out to either side and
+    down, hands huge and splayed, the face thrust up into the light."""
+    f = Frame()
+    cx = 32
+    leg(f, (cx - 3, 30), (cx - 12, 20), (cx - 15, 46), (cx - 16, 50), FAR, "far")
+    leg(f, (cx + 3, 30), (cx + 12, 20), (cx + 15, 46), (cx + 16, 50), FAR, "far")
+    tatters(f, cx - 4, cx + 4, 30, [3, 5, 2, 4, 3], swing=0.2)
+    cells = f.group([Frame.blob((cx, 33), 4.4, 3.4), Frame.tube((cx, 34), (cx, 44), 3.6, 5.2), Frame.blob((cx, 48), 7.6, 5.4)], SK, "skin")
+    for s in (-1, 1):
+        for i in range(3):
+            f.line((cx + s * 2, 40 + i * 2), (cx + s * 5.5, 41 + i * 2), SK[2], cells)
+    for s, vein in ((-1, True), (1, False)):
+        sho = (cx + s * 7.8, 48)
+        elb = (cx + s * 20, 52)
+        wri = (cx + s * 25, 66)
+        tips = [(wri[0] + s * 4.0, 74), (wri[0] + s * 1.5, 77), (wri[0] - s * 1.0, 77), (wri[0] - s * 3.2, 74), (wri[0] + s * 5.0, 70)]
+        arm(f, sho, elb, wri, tips, vein=vein)
+        if s < 0:
+            lantern(f, (wri[0] - 0.5, wri[1] + 1), drop=1.5, swing=-1.5)
+    neck_front(f, cx, 58, 51)
+    face_front(f, (cx, 64), tilt=0, swing=0.6, hole_r=2.6)
+    return f
+
+
+def lunge_away():
+    """Springing away up the frame from behind: arms flung ahead, the back
+    stretched long, the legs kicking off at you."""
+    f = Frame()
+    cx = 32
+    for s in (-1, 1):
+        sho = (cx + s * 6.5, 36)
+        elb = (cx + s * 15, 22)
+        wri = (cx + s * 13, 8)
+        tips = [(wri[0] + s * 2.0, 3), (wri[0] + s * 0.5, 2), (wri[0] - s * 1.2, 3), (wri[0] + s * 3.2, 5)]
+        arm(f, sho, elb, wri, tips, FAR, "far")
+        if s < 0:
+            lantern(f, (wri[0] - 1, wri[1] + 1.5), drop=3.0, swing=-1.0)
+    back_head(f, (cx, 28), swing=0.8)
+    cells = f.group([Frame.blob((cx, 58), 6.2, 4.4), Frame.tube((cx, 56), (cx, 40), 4.0, 5.4), Frame.blob((cx, 36.5), 8.0, 5.0)], BK, "back")
+    for i, y in enumerate(range(33, 57, 2)):
+        f.put((cx, y), BK[7] if i % 2 == 0 else BK[5])
+        f.put((cx, y + 1), BK[1])
+    for s in (-1, 1):
+        f.group([Frame.blob((cx + s * 4.0, 36.5), 2.7, 3.3, s * 18)], BK, "back", outline=False, bias=0.2)
+    tatters(f, cx - 4.4, cx + 4.4, 60, [4, 7, 5, 8, 5], swing=0.0)
+    for s in (-1, 1):
+        leg(f, (cx + s * 4, 60), (cx + s * 10, 66), (cx + s * 7, 76), (cx + s * 6.5, 79), BK, "back")
     return f
 
 
@@ -790,14 +891,19 @@ FRAMES = [
     ("up, back 1", lambda: climb_back(0)), ("up, back 2", lambda: climb_back(1)),
     ("over 1", lambda: climb_front_up(0)), ("over 2", lambda: climb_front_up(1)),
     ("down 1", lambda: climb_front_down(0)), ("down 2", lambda: climb_front_down(1)),
-    ("toward 1", lambda: crawl_front(0)), ("toward 2", lambda: crawl_front(1)),
+    ("toward 1", lambda: crawl_front(0)), ("toward 2", lambda: crawl_front(2)),
     ("perch", lambda: perch()), ("perch tilt", lambda: perch(tilt=35)),
     ("side up 1", lambda: crawl_side(0, -38)), ("side up 2", lambda: crawl_side(1, -38)),
     ("side up 3", lambda: crawl_side(2, -38)), ("side up 4", lambda: crawl_side(3, -38)),
     ("side down 1", lambda: crawl_side(0, 34)), ("side down 2", lambda: crawl_side(1, 34)),
     ("side down 3", lambda: crawl_side(2, 34)), ("side down 4", lambda: crawl_side(3, 34)),
+    # (added: crawling away from you, the passes between the steps toward you, lunges at and away)
+    ("away 1", lambda: crawl_away(0)), ("away 2", lambda: crawl_away(1)),
+    ("away 3", lambda: crawl_away(2)), ("away 4", lambda: crawl_away(3)),
+    ("toward 3", lambda: crawl_front(1)), ("toward 4", lambda: crawl_front(3)),
+    ("lunge toward", lunge_toward), ("lunge away", lunge_away),
 ]
-FIT = ("side", "perch", "lunge", "drop", "crawl")
+FIT = ("side", "perch", "lunge", "drop", "crawl", "away")
 
 
 def main(out):
@@ -809,7 +915,7 @@ def main(out):
         if not FLAT:
             if name.startswith(("idle", "breathe", "tilt", "walk")):
                 WARP = warp_upright
-            elif name.startswith(("crawl", "lunge", "drop", "perch", "toward", "side")):
+            elif name.startswith(("crawl", "lunge", "drop", "perch", "toward", "side", "away")):
                 WARP = warp_low
         f = fn()
         WARP = None
