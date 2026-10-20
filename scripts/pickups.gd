@@ -242,4 +242,17 @@ func _draw() -> void:
 		var lift := roundf(2.5 + sin(_time * 2.6 + phase) * 1.5)   # 1..4 px off the ground
 		var shadow_w := 10.0 - lift
 		draw_rect(Rect2(o + Vector2((16.0 - shadow_w) / 2.0, 13), Vector2(shadow_w, 2)), Color(0, 0, 0, 0.4))
+		if Items.get_info(ground[c].id).has("spirit"):
+			draw_spirit(self, o, ground[c].id, c, _time)   # a fallen partner, hovering where they fell
+			continue
 		Items.draw_icon(self, ground[c].id, Rect2(o + Vector2(0, -lift), Vector2(16, 16)))
+
+
+## A fallen partner's spirit, hovering over its tile (`o`: the tile's top left):
+## drifting up and down, its cloak trailing (assets/spirit.png).
+static func draw_spirit(ci: CanvasItem, o: Vector2, id: String, c: Vector2i, t: float) -> void:
+	var col := int(Items.get_info(id).sheet)
+	var f := int(t * 5.0 + float((c.x * 3 + c.y) % 4)) % 4
+	var lift := roundf(3.0 + sin(t * 1.9) * 2.0)
+	ci.draw_texture_rect_region(Items.SPIRIT_TEX, Rect2(o + Vector2(0, -10 - lift), Vector2(16, 24)),
+		Rect2(col * 64 + f * 16, 0, 16, 24))

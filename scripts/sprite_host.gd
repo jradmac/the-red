@@ -109,7 +109,8 @@ func update(targets: Array[Vector3]) -> void:
 		for c in pk.ground:
 			if near.has_point(c):
 				var d: float = dist.call(c.x + 0.5, c.y + 0.5)
-				cands.append([d + 0.2, _paint_item.bind(pk.ground[c].id, c), Vector2(c * 16), true, 0.25, "i%s" % c])
+				var glows := Items.get_info(pk.ground[c].id).has("spirit")   # (a spirit gives its own light)
+				cands.append([d + 0.2, _paint_item.bind(pk.ground[c].id, c), Vector2(c * 16), not glows, 0.25, "i%s" % c])
 	var fl: Flares = main.flares
 	if fl != null:
 		for c in fl.planted:
@@ -301,6 +302,9 @@ func _paint_companion(ci: CanvasItem, at: Vector2, c: Companion) -> void:
 
 
 func _paint_item(ci: CanvasItem, at: Vector2, id: String, c: Vector2i) -> void:
+	if Items.get_info(id).has("spirit"):
+		Pickups.draw_spirit(ci, at, id, c, Time.get_ticks_msec() / 1000.0)
+		return
 	var phase := float((c.x * 7 + c.y * 13) % 10)
 	var lift := roundf(2.5 + sin(Time.get_ticks_msec() / 1000.0 * 2.6 + phase) * 1.5)
 	Items.draw_icon(ci, id, Rect2(at + Vector2(0, -lift), Vector2(16, 16)))

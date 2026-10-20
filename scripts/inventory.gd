@@ -26,6 +26,7 @@ var bomb_planter: Callable   ## set by main: plants a bomb at your feet, returns
 var seer_user: Callable      ## seer stone: lays the trail to the nearest gate
 var portal_planter: Callable ## portal flare: planted at your feet
 var ladder_placer: Callable  ## ladder: set against the wall you face
+var spirit_user: Callable    ## two players: your fallen partner's spirit brings them back (main.gd)
 var windbreak_left := 0.0
 
 # Set by main so potions can affect the world.
@@ -201,7 +202,8 @@ func use_slot(i: int) -> String:
 	if s.is_empty() or not (Items.kind(s.id) in ["potion", "bomb", "tool"]):
 		return ""
 	var msg := ""
-	var tool := {"seer_stone": seer_user, "portal_flare": portal_planter, "ladder": ladder_placer}
+	var tool := {"seer_stone": seer_user, "portal_flare": portal_planter, "ladder": ladder_placer,
+		"spirit_red": spirit_user, "spirit_blue": spirit_user}
 	if tool.has(s.id):
 		var use: Callable = tool[s.id]
 		if not use.is_valid():

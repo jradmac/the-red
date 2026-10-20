@@ -9,6 +9,9 @@ extends RefCounted
 ##         matches / flare / lantern -> no slot (counters, or replaces your lantern)
 
 const ICONS_TEX: Texture2D = preload("res://assets/items.png")
+## A fallen partner's spirit (two players): hovering, its bag icon, its close-up
+## (tools/make_spirit_art.py). Spirit items say which column with "sheet".
+const SPIRIT_TEX: Texture2D = preload("res://assets/spirit.png")
 
 const DATA := {
 	# Weapons (atk)
@@ -76,6 +79,12 @@ const DATA := {
 		"desc": "PLANT IT AND IT BURNS VIOLET FOREVER. OPEN YOUR MAP, PICK IT, AND YOU STEP BACK TO IT FROM ANYWHERE."},
 	"ladder": {"name": "LADDER", "kind": "tool", "icon": 31,
 		"desc": "SET IT AGAINST A CRYPT WALL ONE BRICK THICK, THEN PRESS Z AT IT TO CLIMB OVER TO THE OTHER SIDE."},
+	# Two players: what's left of a partner who fell (main.gd _spirit_out). Carry
+	# it, and burn a full box of matches to bring them back (main.gd _use_spirit).
+	"spirit_red": {"name": "RED'S SPIRIT", "kind": "tool", "icon": 0, "spirit": true, "sheet": 0,
+		"desc": "ALL THAT'S LEFT OF RED, COLD AND FAINTLY GLOWING. USE IT WITH A FULL BOX OF 6 MATCHES TO BRING HER BACK -- IT TAKES EVERY MATCH, AND YOUR LANTERN'S LIGHT WITH THEM."},
+	"spirit_blue": {"name": "BLUE'S SPIRIT", "kind": "tool", "icon": 0, "spirit": true, "sheet": 1,
+		"desc": "ALL THAT'S LEFT OF BLUE, COLD AND FAINTLY GLOWING. USE IT WITH A FULL BOX OF 6 MATCHES TO BRING HER BACK -- IT TAKES EVERY MATCH, AND YOUR LANTERN'S LIGHT WITH THEM."},
 	# Lanterns (replace yours if better)
 	"brass_lantern": {"name": "BRASS LANTERN", "kind": "lantern", "icon": 15,
 		"max_fuel": 130.0, "radius": 94.0, "desc": "BURNS LONGER AND BRIGHTER."},
@@ -170,7 +179,7 @@ static func sell_price(stack: Dictionary) -> int:
 
 ## Shops won't take keys: you'd be selling your way out of the labyrinth.
 static func sellable(id: String) -> bool:
-	return kind(id) != "key"
+	return kind(id) != "key" and not DATA[id].get("spirit", false)   # (nor your partner's spirit)
 
 
 static func get_info(id: String) -> Dictionary:
@@ -304,4 +313,7 @@ static func roll(rng: RandomNumberGenerator) -> String:
 
 
 static func draw_icon(canvas: CanvasItem, id: String, rect: Rect2) -> void:
+	if DATA[id].has("spirit"):
+		canvas.draw_texture_rect_region(SPIRIT_TEX, rect, Rect2(int(DATA[id].sheet) * 16, 24, 16, 16))
+		return
 	canvas.draw_texture_rect_region(ICONS_TEX, rect, Rect2(DATA[id].icon * 16, 0, 16, 16))

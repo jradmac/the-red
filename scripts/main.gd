@@ -14,6 +14,8 @@ const MUSHROOM_COLOR := Color(0.25, 0.75, 0.85)
 const COOP_HEALTH := 8          ## each player's hearts with two players
 const KNOCKOUT_TIME := 12.0     ## co-op: seconds a fallen player is out before getting up beside their partner
 const KNOCKOUT_HEARTS := 3      ## ... with this many hearts
+const SPIRIT_MATCHES := 6       ## co-op: what it costs to bring a fallen partner back (a full matchbox)
+const SPIRIT_REMIND := 14.0     ## ...and how often a fallen player is told how things stand
 const TRADE_REACH := 2          ## tiles: close enough to swap items
 
 @onready var world: World = $World
@@ -352,6 +354,8 @@ func _make_hero_ui(h: Hero) -> void:
 		return flares.plant_portal(pl.cell)
 	inv.ladder_placer = func() -> String:
 		return ladders.place(pl.facing_cell(), pl.cell)
+	inv.spirit_user = func() -> String:
+		return _use_spirit(h)
 
 	h.hud = Hud.new()
 	add_child(h.hud)
@@ -663,6 +667,8 @@ func _process(delta: float) -> void:
 		if not h.alive():
 			if h.knocked_t > 0.0:
 				_tick_knocked(h, delta)
+			elif h.has_meta("spirit"):
+				_tick_spirit(h, delta)
 			continue
 		Hero.bind_all(h)
 		chests.hero_tick()
@@ -826,7 +832,7 @@ func _die(h: Hero, why: String) -> void:
 	if Hero.all.size() > 1:
 		var other := h.partner()
 		if other != null and other.alive():
-			_knock_out(h, other)
+			_spirit_out(h, other)
 			return
 		# both of you down: that's the end of the run
 		_death_sound()
@@ -841,6 +847,125 @@ func _die(h: Hero, why: String) -> void:
 	h.hud.show_death(why)
 
 
+## Two players: whoever falls -- in a fight, to the Wolf Man, anything --
+## leaves their spirit hovering where they fell (a bag item: spirit_red /
+## spirit_blue). Their partner can carry it and use it like a tool: it costs a
+## full box of SPIRIT_MATCHES matches and every bit of their lantern's light,
+## and the fallen one stands up beside them (_use_spirit). Until then the
+## fallen player's half of the screen follows their spirit -- where it hovers,
+## or along with whoever carries it -- and is told how things stand.
+func _spirit_out(h: Hero, other: Hero) -> void:
+	Sfx.play("death", -4.0)
+	var p := h.player
+	p.dead = true
+	p.knocked_out = true   # (not the end of the run: no "try again")
+	p.moving = false
+	p.visible = false      # what's left of you is the spirit
+	h.knocked_t = 0.0
+	h.set_meta("spirit", true)
+	h.set_meta("spirit_t", 0.0)
+	h.set_meta("spirit_carried", false)
+	if h.lantern.state == Lantern.State.LIT:
+		h.lantern.state = Lantern.State.OUT   # (fuel kept: it's relit when you're back)
+	h.lantern_light.energy = 0.0
+	h.halo_light.energy = 0.0
+	pickups.drop(p.cell, {"id": _spirit_id(h), "qty": 1})
+	h.hud.announce("YOUR SPIRIT LINGERS", _hero_name(other) + " MUST CARRY IT, AND BURN " + str(SPIRIT_MATCHES)
+		+ " MATCHES TO BRING YOU BACK.", Color("ff8a9a"))
+	other.hud.announce(_hero_name(h) + " HAS FALLEN", "THEIR SPIRIT WAITS WHERE THEY FELL. CARRY IT, AND BURN "
+		+ str(SPIRIT_MATCHES) + " MATCHES TO BRING THEM BACK.", Color("ff8a9a"))
+
+
+static func _hero_name(h: Hero) -> String:
+	return "BLUE" if h.p2 else "RED"
+
+
+static func _spirit_id(h: Hero) -> String:
+	return "spirit_blue" if h.p2 else "spirit_red"
+
+
+## A fallen player: their view follows their spirit, and now and then they're
+## told how things stand.
+func _tick_spirit(h: Hero, delta: float) -> void:
+	var id := _spirit_id(h)
+	var other := h.partner()
+	var carried := other != null and other.alive() and other.inventory.count_of(id) > 0
+	if carried:
+		h.player.cell = other.player.cell
+		h.player.position = other.player.position
+	else:
+		for c in pickups.ground:
+			if pickups.ground[c].id == id:
+				h.player.cell = c
+				h.player.position = world.cell_to_position(c)
+				break
+	h.lantern_light.energy = 0.0
+	h.halo_light.energy = 0.0
+	var t: float = float(h.get_meta("spirit_t", 0.0)) + delta
+	if carried != bool(h.get_meta("spirit_carried", false)):
+		h.set_meta("spirit_carried", carried)
+		t = SPIRIT_REMIND   # (say so at once)
+		if carried:
+			Sfx.play("sage", -6.0)
+			other.hud.say("USE " + _hero_name(h) + "'S SPIRIT FROM YOUR BAG, WITH " + str(SPIRIT_MATCHES)
+				+ " MATCHES, TO BRING THEM BACK.")
+	if t >= SPIRIT_REMIND and other != null:
+		t = 0.0
+		if carried:
+			var have: int = other.lantern.matches
+			h.hud.announce(_hero_name(other) + " CARRIES YOUR SPIRIT", ("THEY HAVE ALL " + str(SPIRIT_MATCHES)
+				+ " MATCHES." if have >= SPIRIT_MATCHES else "THEY HAVE " + str(have) + " OF THE " + str(SPIRIT_MATCHES)
+				+ " MATCHES IT TAKES."), Color("c8b8ff"))
+		else:
+			h.hud.announce("YOUR SPIRIT WAITS", "HOVERING WHERE YOU FELL, FOR " + _hero_name(other) + " TO FIND IT.",
+				Color("c8b8ff"))
+	h.set_meta("spirit_t", t)
+
+
+## Using a fallen partner's spirit (from the bag). "!" first: it didn't work
+## (Inventory.use_slot keeps the spirit).
+func _use_spirit(x: Hero) -> String:
+	var h := x.partner()
+	if h == null or h.alive() or not h.has_meta("spirit"):
+		return "!NOTHING HAPPENS. THEY'RE ALREADY WITH YOU."
+	if x.lantern.matches < SPIRIT_MATCHES:
+		Sfx.play("ui_deny")
+		var need := SPIRIT_MATCHES - x.lantern.matches
+		return "!IT TAKES " + str(SPIRIT_MATCHES) + " MATCHES TO BRING " + _hero_name(h) + " BACK, AND YOU HAVE " \
+			+ str(x.lantern.matches) + ". FIND " + str(need) + " MORE."
+	# every match, and every bit of light
+	x.lantern.matches -= SPIRIT_MATCHES
+	x.lantern.fuel = 0.0
+	x.lantern.sun_left = 0.0
+	x.lantern.blue_left = 0.0
+	if x.lantern.state == Lantern.State.LIT:
+		x.lantern.state = Lantern.State.OUT
+		x.lantern.went_out.emit()
+	# and they're back, beside you
+	h.remove_meta("spirit")
+	h.remove_meta("spirit_t")
+	h.remove_meta("spirit_carried")
+	var c := _free_beside(x.player.cell)
+	h.player.cell = c
+	h.player.position = world.cell_to_position(c)
+	h.player.dead = false
+	h.player.knocked_out = false
+	h.player.ui_lock = ""
+	h.player.modulate = Color.WHITE
+	h.player.visible = true
+	h.inventory.health = maxi(h.inventory.health, KNOCKOUT_HEARTS)
+	h.inventory.changed.emit()
+	h.lantern.refuel(20.0)   # (a little light of their own to start again with)
+	_fx.match_strike(x.player, x.lantern_light.offset)
+	Sfx.play("flare_up", -2.0)
+	Sfx.play("dawn", -6.0)
+	h.hud.announce("YOU'RE BACK", _hero_name(x) + " BURNED EVERY MATCH THEY HAD TO BRING YOU BACK. THEIR LANTERN IS DARK.",
+		Color("8ab8ff"))
+	return "YOU STRIKE ALL " + str(SPIRIT_MATCHES) + " MATCHES AT ONCE. THE SPIRIT DRINKS THE FIRE -- AND YOUR LANTERN'S LIGHT WITH IT -- AND " \
+		+ _hero_name(h) + " STANDS BESIDE YOU AGAIN. IN THE DARK."
+
+
+## (Two players, before spirits: someone who fell was knocked out for a while.)
 ## Two players: someone who falls is knocked out, not gone. They get back up
 ## beside their partner after a little while (if the partner's still standing).
 func _knock_out(h: Hero, other: Hero) -> void:
@@ -939,7 +1064,8 @@ func _tick_longmen(delta: float) -> void:
 			longmen[h] = lm
 		var lm: Longman = longmen[h]
 		if not h.alive():
-			lm.tick(delta, false, false, daytime, true)
+			# (a fallen player's: it finishes, then slinks off into the dark)
+			lm.tick(delta, false, false, daytime, not h.has_meta("spirit"))
 			continue
 		enemies.bind(h)
 		# (bent over a lock you aren't safe: it keeps coming -- see lock_puzzle.gd)
@@ -986,8 +1112,8 @@ func _in_partners_light(h: Hero) -> bool:
 
 
 ## The Longman reached someone in the dark. Alone, the run is over. With a
-## partner, that player is gone for good (their things stay where they fell)
-## and the other carries on.
+## partner, their spirit is left where it took them (_spirit_out), and the
+## other carries on.
 func _on_eaten(h: Hero) -> void:
 	if not Hero.all.has(h) or not h.alive():
 		return
@@ -995,9 +1121,7 @@ func _on_eaten(h: Hero) -> void:
 	h.player.visible = false   # nothing is left of you
 	var other := h.partner()
 	if other != null and other.alive():
-		Sfx.play("death", -4.0)
-		other.hud.announce("PLAYER " + ("2" if h.p2 else "1") + " IS GONE", "THE WOLF MAN TOOK THEM. KEEP YOUR LIGHT.", Color("ff8a9a"))
-		drop_out(h, true)
+		_spirit_out(h, other)   # (their spirit is left where it took them)
 		return
 	for x in Hero.all:
 		x.player.dead = true
