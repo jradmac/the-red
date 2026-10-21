@@ -19,6 +19,7 @@ extends Node
 
 const PITCH := deg_to_rad(52.0)     ## how steeply the camera looks down
 const DIST := 44.0                  ## camera distance (tiles) from the spot it looks at
+const INK_SHADER: Shader = preload("res://shaders/ink3d.gdshader")
 const SUPERSAMPLE := 2.0           ## the 3D world is drawn this much bigger, then averaged down
 const LIGHT_POOL := 16              ## lamps, candles, wisps... at once (nearest first)
 const LANTERN_Y := 1.3              ## how high a lantern is held (walls are ~1.05)
@@ -44,6 +45,7 @@ var objects: Objects3D
 var village: Village3D
 var traps3d: Traps3D
 var tall_grass: TallGrass   ## the tall grass you wade through (tall_grass.gd)
+var rare3d: Rare3D         ## the rare lands' liquids and air
 var active := false
 
 var _views: Array = []        ## per camera: {vp, cam, target: Vector3, display: Viewport, show: CanvasLayer}
@@ -55,6 +57,7 @@ var _lanterns := {}           ## Hero -> OmniLight3D (with shadows)
 var _halos: Array[MeshInstance3D] = []   ## the glow in the air round each light (halo3d.gdshader)
 var _grade: ShaderMaterial    ## the finishing pass over the picture (grade3d.gdshader)
 var _built := false
+var res := 1.0                  ## real screen pixels per game pixel (px_scale)
 var _time := 0.0
 var _ground_meshes: Array[ArrayMesh] = []
 
@@ -137,6 +140,10 @@ func setup(m: Node) -> void:
 	screen = TextureRect.new()
 	screen.texture = vp.get_texture()
 	screen.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	# (the picture is bigger than the layout -- the real resolution -- and is
+	# shown at the layout's size, one picture pixel to one screen pixel)
+	screen.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	screen.stretch_mode = TextureRect.STRETCH_SCALE
 	screen.size = Vector2(360, 240)
 	screen.material = _grade
 	layer.add_child(screen)
@@ -169,9 +176,52 @@ func _add_view() -> Dictionary:
 	c.far = 160.0
 	v.add_child(c)
 	c.current = true
+	_add_ink(c, _views.size())
 	var d := {"vp": v, "cam": c, "target": Vector3.ZERO, "display": null, "show": null}
 	_views.append(d)
 	return d
+
+
+## How many real screen pixels make one of the game's pixels (3 in a
+## 1080 x 720 window, more full-screen).
+func px_scale() -> float:
+	var t := main.get_viewport().get_final_transform()
+	return maxf(1.0, roundf(t.x.x))
+
+
+## The 3D picture's size changed: smooth its edges to suit (at the real
+## resolution, multisampling; in a small window, drawn bigger and averaged
+## down), and keep the glow and ink lines the same size on screen.
+func _set_res(k: float) -> void:
+	for v in _views:
+		var sv: SubViewport = v.vp
+		sv.scaling_3d_scale = SUPERSAMPLE if k < 2.0 else 1.0
+		sv.msaa_3d = Viewport.MSAA_4X if k >= 2.0 else Viewport.MSAA_DISABLED
+		var ink: MeshInstance3D = (v.cam as Camera3D).get_node_or_null("Ink")
+		if ink != null:
+			(ink.material_override as ShaderMaterial).set_shader_parameter("width", maxf(1.5, k * 0.75))
+	_grade.set_shader_parameter("px_scale", k)
+
+
+## Ink lines over the picture, like a hand-drawn illustration's
+## (shaders/ink3d.gdshader): a full-screen pass carried by each camera, on a
+## render layer of its own so a co-op view only draws its own.
+func _add_ink(c: Camera3D, i: int) -> void:
+	var q := MeshInstance3D.new()
+	var m := QuadMesh.new()
+	m.size = Vector2(2, 2)
+	q.mesh = m
+	var sm := ShaderMaterial.new()
+	sm.shader = INK_SHADER
+	sm.render_priority = 100
+	q.material_override = sm
+	q.extra_cull_margin = 16384.0
+	q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	q.layers = 1 << (18 + i)
+	c.cull_mask = (c.cull_mask & ~((1 << 18) | (1 << 19))) | (1 << (18 + i))
+	q.position = Vector3(0, 0, -2.0)
+	q.name = "Ink"
+	c.add_child(q)
 
 
 ## Builds the models (call once the labyrinth is complete). Async: it bakes
@@ -193,6 +243,9 @@ func build() -> void:
 	tall_grass = TallGrass.new()
 	root.add_child(tall_grass)
 	tall_grass.build(self)
+	rare3d = Rare3D.new()   # the rare lands' liquids and air (rare3d.gd)
+	root.add_child(rare3d)
+	rare3d.build(self)
 	# everything lit by the same light model (light_style.gd)
 	LightStyle.convert(root)
 	_build_decals()
@@ -333,11 +386,17 @@ func _process(delta: float) -> void:
 		return
 	_time += delta
 	var two := not _coop_svs.is_empty()
+	# the 3D world is drawn at the screen's real resolution (the game's own
+	# 360 x 240 layout scaled up by `res`), so its edges, ink lines and
+	# surfaces are sharp, while the HUD and sprites stay crisp pixel art
+	res = 1.0 if two else px_scale()
 	if not two:
 		var view := main.get_viewport().get_visible_rect().size
-		if Vector2(vp.size) != view:
-			vp.size = Vector2i(view)
+		var want := Vector2i((view * res).round())
+		if vp.size != want:
+			vp.size = want
 			screen.size = view
+			_set_res(res)
 	var p: Player = main.player
 	for i in _views.size():
 		if i > 0 and not two:
@@ -350,7 +409,7 @@ func _process(delta: float) -> void:
 		var g := Vector3(at.x / World.TILE, 0.0, at.y / World.TILE)
 		g.y = ground_at(g.x, g.z)
 		v.target = g
-		var size := Vector2((v.vp as SubViewport).size)
+		var size := Vector2((v.vp as SubViewport).size) / res
 		c.fov = rad_to_deg(2.0 * atan(size.y / 32.0 / DIST))
 		var look := _snap(g + Vector3(0.0, 0.6, 0.0))
 		c.position = look + Vector3(0.0, sin(PITCH), cos(PITCH)) * DIST
@@ -360,6 +419,8 @@ func _process(delta: float) -> void:
 	_update_lights(ts)
 	if tall_grass != null:
 		tall_grass.update()
+	if rare3d != null:
+		rare3d.update()
 	sprites.update(ts)
 	_update_decals(ts)
 
@@ -372,8 +433,9 @@ func _snap(p: Vector3) -> Vector3:
 	var right := Vector3.RIGHT
 	var up := Vector3(0.0, cos(PITCH), -sin(PITCH))
 	var fwd := -Vector3(0.0, sin(PITCH), cos(PITCH))
-	var r := roundf(p.dot(right) * 16.0) / 16.0
-	var u := roundf(p.dot(up) * 16.0) / 16.0
+	var g := 16.0 * res   # one screen pixel
+	var r := roundf(p.dot(right) * g) / g
+	var u := roundf(p.dot(up) * g) / g
 	return right * r + up * u + fwd * p.dot(fwd)
 
 
@@ -659,9 +721,10 @@ func _place_overlay(v: Dictionary, at: Vector2, g: Vector3) -> void:
 	if v.display == null:
 		return
 	var c: Camera3D = v.cam
-	var o := c.unproject_position(g)
-	var ex := c.unproject_position(g + Vector3(1, 0, 0)) - o
-	var ez := c.unproject_position(g + Vector3(0, 0, 1)) - o
+	var k := 1.0 if v.display != main.get_viewport() else res   # (the picture's pixels -> the layout's)
+	var o := c.unproject_position(g) / k
+	var ex := (c.unproject_position(g + Vector3(1, 0, 0)) - c.unproject_position(g)) / k
+	var ez := (c.unproject_position(g + Vector3(0, 0, 1)) - c.unproject_position(g)) / k
 	var xf := Transform2D(ex / World.TILE, ez / World.TILE, Vector2.ZERO)
 	xf.origin = o - xf.basis_xform(at)
 	RenderingServer.viewport_set_canvas_transform((v.display as Viewport).get_viewport_rid(), _overlay_canvas, xf)

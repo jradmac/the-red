@@ -38,8 +38,39 @@ var _set_sel := 0         # 0 sound effects, 1 music, 2 3D world, 3 back
 var save_game: Callable   ## set by main: saves the run, returns true if it worked
 var leave_game: Callable  ## set by main: this player leaves (two players only)
 var hero: Hero
-const SOLO_BUTTONS := ["SAVE GAME", "SAVE + QUIT", "SETTINGS"]
-const COOP_BUTTONS := ["SAVE GAME", "LEAVE GAME", "SETTINGS"]
+const SOLO_BUTTONS := ["SAVE GAME", "SAVE + QUIT", "SETTINGS", "JOURNAL"]
+const COOP_BUTTONS := ["SAVE GAME", "LEAVE GAME", "SETTINGS", "JOURNAL"]
+var _journal: JournalScreen = null   ## Red's journal, open over the bag
+var _glow_tex: Texture2D = null
+## The light each item sits in on the ITEM panel (others: the lantern's warm one).
+const ITEM_LIGHT := {
+	"healing_tonic": Color(1.0, 0.3, 0.35), "red_berry": Color(1.0, 0.3, 0.35), "ruby": Color(1.0, 0.25, 0.4),
+	"blue_berry": Color(0.4, 0.5, 1.0), "blue_hood": Color(0.4, 0.55, 1.0), "windbreak": Color(0.5, 0.85, 1.0),
+	"seers_draught": Color(0.7, 0.45, 1.0), "portal_flare": Color(0.75, 0.45, 1.0), "purple_key": Color(0.7, 0.4, 1.0),
+	"kings_mantle": Color(0.7, 0.45, 1.0), "seer_stone": Color(0.35, 1.0, 0.55), "flare": Color(0.4, 1.0, 0.6),
+	"witchglass_lantern": Color(0.35, 1.0, 0.6), "sunstone": Color(1.0, 0.85, 0.3), "gold_key": Color(1.0, 0.82, 0.3),
+	"silver_key": Color(0.75, 0.82, 1.0), "silver_dagger": Color(0.75, 0.82, 1.0), "chain_shirt": Color(0.7, 0.75, 0.9),
+	"iron_plate": Color(0.7, 0.75, 0.9), "grave_blade": Color(0.6, 0.45, 1.0), "wardens_axe": Color(1.0, 0.82, 0.3),
+}
+
+
+## One soft round light (white; tinted where it's drawn).
+func _soft_glow() -> Texture2D:
+	if _glow_tex == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(1, 1, 1, 1))
+		g.set_color(1, Color(1, 1, 1, 0))
+		g.add_point(0.45, Color(1, 1, 1, 0.35))
+		var gt := GradientTexture2D.new()
+		gt.gradient = g
+		gt.fill = GradientTexture2D.FILL_RADIAL
+		gt.fill_from = Vector2(0.5, 0.5)
+		gt.fill_to = Vector2(1.0, 0.5)
+		gt.width = 128
+		gt.height = 128
+		_glow_tex = gt
+	return _glow_tex
+var _journal_shut := -10             ## the frame it closed on (its X mustn't count here too)
 var BUTTONS: Array:
 	get:
 		return COOP_BUTTONS if Hero.all.size() > 1 else SOLO_BUTTONS
@@ -120,6 +151,8 @@ func _say(text: String, col: Color = C_TEXT) -> void:
 
 
 func _browse() -> void:
+	if _journal != null or Engine.get_process_frames() <= _journal_shut + 1:
+		return   # the journal has the buttons
 	if _guide >= 0:
 		_browse_guide()
 		return
@@ -181,7 +214,7 @@ func _browse() -> void:
 		_say("DROPPED " + Items.with_article(stack.id, stack.qty) + ".")
 
 
-## The bottom row: SAVE GAME, SAVE & QUIT, SETTINGS.
+## The bottom row: SAVE GAME, SAVE & QUIT, SETTINGS, JOURNAL.
 func _browse_menu() -> void:
 	var was_armed := _leave_armed
 	for a in ["inventory", "move_up", "move_down", "move_left", "move_right", "run"]:
@@ -218,14 +251,31 @@ func _browse_menu() -> void:
 					Sfx.play("ui_deny")
 					return
 				Sfx.play("correct", -6.0)
-				if _menu == 1:
-					get_tree().quit()
+				if _menu == 1:   # saved: back to the title screen (main shows it on a fresh start)
+					_close()
+					get_tree().paused = false
+					get_tree().call_deferred("reload_current_scene")
 					return
 				_say("GAME SAVED. YOU CAN QUIT AND COME BACK ANY TIME.", Color("7dff9a"))
 			2:
 				_settings = true
 				_set_sel = 0
 				Sfx.play("page")
+			3:
+				_open_journal()
+
+
+## JOURNAL: Red's journal, as from the title -- but here what you've found
+## since you last looked shimmers, NEW, until you open its card.
+func _open_journal() -> void:
+	Sfx.play("ui_select")
+	_journal = JournalScreen.new()
+	_journal.in_game = true
+	add_child(_journal)
+	_journal.closed.connect(func() -> void:
+		_journal.queue_free()
+		_journal = null
+		_journal_shut = Engine.get_process_frames())
 
 
 ## SETTINGS: two volume bars. Up/down choose, left/right adjust.
@@ -420,12 +470,15 @@ func _draw_bag() -> void:
 	UiKit.panel(_canvas, d, "ITEM")
 	var sel := inventory.slots[_sel]
 	if not sel.is_empty():
-		var ic := Vector2(d.get_center().x, d.position.y + 30)
-		UiKit.glow(_canvas, ic, 22, Color("8a7aff"), 0.8)
+		# the item up close (its 64 x 64 render), floating in a soft light of its own colour
+		var ic := Vector2(d.get_center().x, d.position.y + 38)
+		var tint: Color = ITEM_LIGHT.get(sel.id, Color(1.0, 0.62, 0.3))
+		var breathe := 1.0 + 0.04 * sin(_time * 2.0)
+		_canvas.draw_texture_rect(_soft_glow(), Rect2(ic - Vector2(40, 38) * breathe, Vector2(80, 76) * breathe), false, Color(tint, 0.30))
 		var float_y := roundf(sin(_time * 2.5) * 1.5)
-		Shadows.oval(_canvas, ic + Vector2(0, 19), 18, 0.8)
-		Items.draw_icon(_canvas, sel.id, Rect2(ic - Vector2(16, 16 - float_y), Vector2(32, 32)))
-		var y := d.position.y + 56
+		Shadows.oval(_canvas, ic + Vector2(0, 30), 18, 0.7)
+		Items.draw_big(_canvas, sel.id, (ic - Vector2(32, 32 - float_y)).round())
+		var y := d.position.y + 72
 		for line in Dialog.wrap_text(Items.label(sel), 96):
 			PixelFont.draw(_canvas, Vector2(d.position.x + 6, y), line, C_PICK)
 			y += 7
@@ -433,10 +486,23 @@ func _draw_bag() -> void:
 		if Items.bonus(sel) > 0:
 			sl = Items.kind(sel.id).to_upper() + "   " + Items.short_stat_of(sel) + "  (+" + str(Items.bonus(sel)) + ")"
 		PixelFont.draw(_canvas, Vector2(d.position.x + 6, y), sl, C_DIM)
-		y += 11
-		for line in Dialog.wrap_text(Items.get_info(sel.id).desc, 96):
-			PixelFont.draw(_canvas, Vector2(d.position.x + 6, y), line, C_TEXT)
+		y += 10
+		# the story: as many lines as fit; a longer one rolls slowly through them
+		var lines := Dialog.wrap_text(Items.get_info(sel.id).desc, 96)
+		var room := int((d.end.y - 3 - y) / 7.0)
+		var first := 0
+		if lines.size() > room and room > 0:
+			var steps := lines.size() - room + 1
+			var k := int(_time / 1.6) % (steps + 2)   # (it rests a moment at the top and the bottom)
+			first = clampi(k - 1, 0, steps - 1)
+		for i in range(first, mini(lines.size(), first + room)):
+			PixelFont.draw(_canvas, Vector2(d.position.x + 6, y), lines[i], C_TEXT)
 			y += 7
+		if lines.size() > room and room > 0:   # little arrows: there's more
+			if first > 0:
+				PixelFont.draw(_canvas, Vector2(d.end.x - 9, d.end.y - 7 * room - 4), "^", C_DIM)
+			if first + room < lines.size():
+				PixelFont.draw(_canvas, Vector2(d.end.x - 9, d.end.y - 9), "v", C_DIM)
 	else:
 		PixelFont.draw(_canvas, d.position + Vector2(36, 60), "NOTHING", C_DIM)
 
@@ -462,9 +528,9 @@ func _draw_bag() -> void:
 
 	# --- Footer -------------------------------------------------------------------------
 	# the bottom row: save, save & quit, settings
-	var bw := 100.0
+	var bw := floorf((screen.x - 16 - 6.0 * (BUTTONS.size() - 1)) / BUTTONS.size())
 	for i in BUTTONS.size():
-		var br := Rect2(8 + i * (bw + 22), 212, bw, 13)
+		var br := Rect2(8 + i * (bw + 6), 212, bw, 13)
 		var on := _menu == i
 		_canvas.draw_rect(br, C_SLOT_PICK if on else C_SLOT)
 		if on:
@@ -472,6 +538,11 @@ func _draw_bag() -> void:
 		var bt: String = BUTTONS[i]
 		PixelFont.draw(_canvas, Vector2(floorf(br.get_center().x - PixelFont.width_of(bt) / 2.0), br.position.y + 3), bt,
 			C_PICK if on else C_DIM)
+		if bt == "JOURNAL" and Profile.any_new(""):   # new cards waiting in it
+			var a := 0.6 + 0.4 * sin(_time * 5.0)
+			var dc := Vector2(br.end.x - 6, br.get_center().y)
+			_canvas.draw_colored_polygon(PackedVector2Array([dc + Vector2(0, -3), dc + Vector2(3, 0), dc + Vector2(0, 3), dc + Vector2(-3, 0)]),
+				Color(C_PICK, a))
 	if _note_t > 0.0:
 		var nw := PixelFont.width_of(_note) + 12
 		_canvas.draw_rect(Rect2(floorf((screen.x - nw) / 2), 196, nw, 12), Color(0.03, 0.02, 0.05, 0.92))

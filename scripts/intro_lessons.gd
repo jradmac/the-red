@@ -216,25 +216,41 @@ static func _ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void
 
 # --- 2. Flares and the map ----------------------------------------------------
 
-## A flare drops, plants itself and burns green.
+## A flare drops, bites into the flagstones and catches: a burst of green
+## that settles into a steady burning light, sparks and smoke rising.
 static func _flare_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
-	var ground := Vector2(cx - 20, a.position.y + 100)
+	var ground := Vector2(cx - 30, a.position.y + 112)
 	var planted := lt >= 0.45
 	var r := 0.0
+	var burst := 0.0
 	if planted:
-		r = lerpf(0.0, 74.0, _ease(_k(lt, 0.45, 0.7)))
+		r = lerpf(0.0, 80.0, _ease(_k(lt, 0.45, 0.7)))
 		if lt > 0.7:
-			r = lerpf(74.0, 58.0, _k(lt, 0.7, 1.6))
-		r += sin(t * 9.0) * 1.0
-	_floor(c, ground, 150.0, 56.0, GREEN, r / 74.0)
-	_glow(c, ground + Vector2(0, -16), r, GREEN, 0.9)
-	var drop := 0.0 if planted else -80.0 * (1.0 - _ease_in(_k(lt, 0.0, 0.45)))
-	_flare(c, ground + Vector2(0, drop), _k(lt, 0.0, 0.2))
+			r = lerpf(80.0, 62.0, _k(lt, 0.7, 1.6))
+		r += sin(t * 9.0) * 1.2 + sin(t * 23.0) * 0.6
+		burst = 1.0 - _k(lt, 0.45, 1.1)
+	_floor(c, ground + Vector2(0, 4), 170.0, 60.0, GREEN, r / 80.0)
+	_glow(c, ground + Vector2(0, -30), r * 1.15, GREEN, 0.9)
+	_glow(c, ground + Vector2(0, -36), r * 0.4, Color(0.85, 1.0, 0.9), 0.6)
+	# its shadow on the floor, and a crack where the spike went in
+	if planted:
+		c.draw_rect(Rect2(ground + Vector2(-9, 8), Vector2(18, 2)), Color(0, 0, 0, 0.45))
+		c.draw_line(ground + Vector2(-5, 9), ground + Vector2(-11, 13), Color(0, 0, 0, 0.6))
+		c.draw_line(ground + Vector2(4, 9), ground + Vector2(9, 12), Color(0, 0, 0, 0.6))
+	var drop := 0.0 if planted else -90.0 * (1.0 - _ease_in(_k(lt, 0.0, 0.45)))
+	_flare(c, ground + Vector2(0, drop), _k(lt, 0.0, 0.2), t, planted, burst)
+	# the shockwave of light as it catches, and chips of stone kicked up
 	if planted and lt < 1.4:
 		var bk := _k(lt, 0.45, 1.4)
-		c.draw_arc(ground + Vector2(0, -12), 8.0 + bk * 70.0, 0.0, TAU, 40, Color(GREEN, 0.7 * (1.0 - bk)), 1.0)
-	_key(c, Vector2(cx + 96, a.position.y + 90), "F", "PLANT A FLARE")
+		c.draw_arc(ground + Vector2(0, -26), 10.0 + bk * 80.0, 0.0, TAU, 48, Color(GREEN, 0.7 * (1.0 - bk)), 1.0)
+		var ck := _k(lt, 0.45, 0.85)
+		if ck < 1.0:
+			for i in 6:
+				var ang := PI + 0.4 + i * 0.42
+				var p := ground + Vector2(0, 8) + Vector2(cos(ang), sin(ang) * 0.5) * (4.0 + ck * 18.0) + Vector2(0, -sin(ck * PI) * 10.0)
+				c.draw_rect(Rect2(p.round(), Vector2(1, 1)), Color(0.55, 0.5, 0.6, 1.0 - ck))
+	_key(c, Vector2(cx + 100, a.position.y + 90), "F", "PLANT A FLARE")
 
 
 ## Each flare reveals its room on the map, one after another.
@@ -249,10 +265,12 @@ static func _map_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	const ORDER := [0, 1, 4, 3]     # rooms that get a flare, in order (2 and 5 stay unexplored)
 	const WHEN := [0.3, 1.4, 2.5, 3.6]
 	var cx := a.get_center().x
-	var o := Vector2(roundf(cx - W * CELL / 2.0) - 14, a.position.y + 34)
-	var frame := Rect2(o - Vector2(8, 8), Vector2(W * CELL + 16, H * CELL + 16))
-	UiKit.panel(c, frame, "MAP")
-	c.draw_rect(frame.grow(-2), Color(0.02, 0.01, 0.04))
+	var pr := IntroArt.rect("parchment")
+	var pc := Vector2(roundf(cx - 14), a.position.y + 30 + pr.size.y / 2.0)
+	var frame := Rect2((pc - pr.size / 2.0).round(), pr.size)
+	_glow(c, pc + Vector2(0, 10), 120.0, LANTERN, 0.35)
+	_art(c, "parchment", pc)
+	var o := (pc - Vector2(W * CELL, H * CELL) / 2.0 + Vector2(-6, -4)).round()
 	var shown := {}
 	for i in ORDER.size():
 		if lt >= WHEN[i]:
@@ -268,9 +286,14 @@ static func _map_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 			for rr in rects:
 				var px := Rect2(o + Vector2((rr as Rect2i).position) * CELL, Vector2((rr as Rect2i).size) * CELL)
 				if pass_i == 0:
-					c.draw_rect(px.grow(CELL / 2.0), Color(Color("2a2438"), al))
+					c.draw_rect(px.grow(CELL / 2.0), Color(Color("4a2e18"), al))      # ink walls
 				else:
-					c.draw_rect(px, Color(Color("6b6480"), al))
+					c.draw_rect(px, Color(Color("b89a62"), al * 0.85))               # the floor, a wash of darker paper
+					# hatching across the floor, like a hand-drawn map
+					var hx_ := px.position.x
+					while hx_ < px.end.x:
+						c.draw_rect(Rect2(hx_, px.position.y, 1, px.size.y), Color(Color("8a6a40"), al * 0.35))
+						hx_ += 3.0
 	# the gate on the way east, once that hall is mapped
 	if shown.has(1):
 		c.draw_rect(Rect2(o + Vector2(23, 3) * CELL - Vector2.ONE, Vector2(CELL + 2, CELL + 2)), Color(Color("c07a3a"), shown[1]))
@@ -282,39 +305,49 @@ static func _map_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 		newest = ORDER[i]
 		var rc := (ROOMS[ORDER[i]] as Rect2i).get_center()
 		var fp := o + Vector2(rc) * CELL
-		c.draw_rect(Rect2(fp, Vector2(CELL, CELL)), Color("7dff9a"))
+		_glow(c, fp + Vector2(2, 2), 7.0, GREEN, 0.5)
+		c.draw_rect(Rect2(fp + Vector2(1, 0), Vector2(2, 1)), Color("eafff0"))
+		c.draw_rect(Rect2(fp + Vector2(0, 1), Vector2(4, 2)), Color("7dff9a"))
+		c.draw_rect(Rect2(fp + Vector2(1, 3), Vector2(2, 2)), Color("2a6a3a"))
 		var since: float = lt - WHEN[i]
 		if since < 0.8:
 			c.draw_arc(fp + Vector2(2, 2), 3.0 + since * 18.0, 0.0, TAU, 24, Color(GREEN, 0.8 * (1.0 - since / 0.8)), 1.0)
 	if newest >= 0 and fmod(t, 0.8) < 0.55:
 		var hc := (ROOMS[newest] as Rect2i).get_center() + Vector2i(2, 1)
 		c.draw_rect(Rect2(o + Vector2(hc) * CELL - Vector2.ONE, Vector2(CELL + 2, CELL + 2)), Color("ec6a5c"))
-	_key(c, Vector2(frame.end.x + 26, frame.get_center().y - 6), "M", "MAP")
-	_text_c(c, frame.get_center().x, frame.end.y + 5, "ONLY FLARED ROOMS SHOW UP", C_DIM)
+	_key(c, Vector2(frame.end.x + 24, frame.get_center().y - 6), "M", "MAP")
+	_text_c(c, frame.get_center().x, frame.end.y + 6, "ONLY FLARED ROOMS SHOW UP", C_DIM)
 
 
-## A flare's green light holds the Longman back too: it creeps up to the
-## edge every few seconds, and recoils.
+## A flare's green light holds the Wolf Man back too: he waits at the edge
+## of it, creeps in every few seconds -- and the flare flares, catching him
+## full in the light, and he shrinks back.
 static func _flare_ghosts_lesson(c: CanvasItem, t: float, lt: float, a: Rect2) -> void:
 	var cx := a.get_center().x
-	var ground := Vector2(cx, a.position.y + 94)
-	var r := 58.0 + sin(t * 9.0) * 1.0
-	_floor(c, ground, 150.0, 56.0, GREEN, 0.8)
-	_glow(c, ground + Vector2(0, -16), r, GREEN, 0.9)
-	_flare(c, ground, 1.0)
-	var floor_y := a.position.y + 138.0
-	var edge := cx - 112.0
-	var x := edge
-	var frame := 0 if fmod(t, 2.4) < 1.6 else 2
+	var ground := Vector2(cx - 70, a.position.y + 118)
 	var dk := fmod(lt, 3.0)
-	if dk > 1.4 and dk < 2.6:
-		# it gets brave, creeps toward the light, and recoils
-		var k := _k(dk, 1.4, 2.6)
-		x = edge + sin(k * PI) * 34.0
-		frame = 4 + int(t * 7.0) % 4
-	var seen := clampf(1.0 - (absf(x - cx) - r) / 50.0, 0.0, 1.0)
-	var col := Color(0.3, 0.34, 0.36).lerp(Color(0.75, 1.0, 0.82), seen * 0.7)
-	_longman(c, Vector2(x, floor_y), frame, false, col)
+	var surge := 0.0
+	if dk > 1.9 and dk < 2.5:
+		surge = sin(_k(dk, 1.9, 2.5) * PI)
+	var r := 62.0 + sin(t * 9.0) * 1.2 + surge * 26.0
+	_floor(c, ground + Vector2(0, 4), 170.0, 60.0, GREEN, 0.85)
+	_glow(c, ground + Vector2(0, -30), r * 1.15, GREEN, 0.9)
+	_glow(c, ground + Vector2(0, -36), r * 0.4, Color(0.85, 1.0, 0.9), 0.6)
+	# him: at the edge of the light, to the right; he creeps in, and recoils
+	var far := cx + 40.0
+	var near := cx - 6.0
+	var x := far
+	var pose := 1 if fmod(t, 3.1) > 2.4 else 0
+	if dk > 1.2 and dk < 2.6:
+		var k := _k(dk, 1.2, 2.6)
+		x = lerpf(far, near, sin(minf(k, 0.55) / 0.55 * PI / 2.0)) if k < 0.55 else lerpf(near, far, _ease(_k(k, 0.55, 1.0)))
+		pose = 4 if k > 0.5 and k < 0.7 else 1
+	var seen := clampf(1.0 - (x - ground.x - r) / 70.0, 0.5, 1.0) + surge * 0.3
+	var col := Color(0.55 * seen, 0.95 * seen, 0.68 * seen)
+	var top := Vector2(roundf(x - IntroArt.WOLF_SIZE.x / 2.0), a.position.y + roundf(sin(t * 1.7)))
+	_wolf(c, top, pose, col, a)
+	_wolf(c, top, 3 if pose != 0 else 2, Color(0.8, 1.0, 0.85, 0.25 + 0.15 * sin(t * 2.3)), a)
+	_flare(c, ground, 1.0, t, true, surge)
 	_text_c(c, cx, a.end.y - 6, "FLARES HOLD THE WOLF MAN BACK", C_DIM)
 
 
@@ -715,7 +748,11 @@ static func _tex(c: CanvasItem, tex: Texture2D, src: Rect2, center: Vector2, s: 
 	c.draw_texture_rect_region(tex, Rect2((center - size / 2.0).round(), size), src, mod)
 
 
+## An item at 16 x s pixels: at 32 its detailed render (Items.draw_mid), else its icon.
 static func _icon(c: CanvasItem, id: String, center: Vector2, s: float, alpha := 1.0) -> void:
+	if s == 2.0:
+		Items.draw_mid(c, id, Rect2((center - Vector2(16, 16)).round(), Vector2(32, 32)), Color(1, 1, 1, alpha))
+		return
 	_tex(c, ITEMS_TEX, Rect2(int(Items.DATA[id].icon) * 16, 0, 16, 16), center, s, Color(1, 1, 1, alpha))
 
 
@@ -729,8 +766,38 @@ static func _longman(c: CanvasItem, feet: Vector2, frame: int, flip: bool, col: 
 	c.draw_texture_rect_region(LONGMAN_TEX, dst, src, col)
 
 
-static func _flare(c: CanvasItem, ground: Vector2, alpha: float) -> void:
-	_tex(c, PROPS_TEX, Rect2(FLARE * 16, 0, 16, 16), ground + Vector2(0, -20), 3.0, Color(1, 1, 1, alpha))
+## The flare (intro art), its spike sunk into the floor at `ground`; lit, it
+## burns green at the top: a flickering tongue, a white-hot core, sparks
+## spitting up and falling, and a thread of smoke.
+static func _flare(c: CanvasItem, ground: Vector2, alpha: float, t := 0.0, lit := true, burst := 0.0) -> void:
+	_art_feet(c, "flare", ground + Vector2(0, 9), Color(1, 1, 1, alpha))
+	if not lit or alpha <= 0.0:
+		return
+	var top := (ground + Vector2(0, -40)).round()
+	# smoke, drifting up and away
+	for i in 5:
+		var k := fmod(t * 0.35 + i / 5.0, 1.0)
+		var sp := top + Vector2(sin(k * 5.0 + i) * (3.0 + k * 8.0) + k * 6.0, -10.0 - k * 46.0)
+		c.draw_circle(sp, 2.0 + k * 5.0, Color(0.55, 0.62, 0.58, 0.16 * (1.0 - k) * alpha))
+	# the flame: stacked rows, narrowing upward, flickering
+	var h := 17.0 + sin(t * 17.0) * 2.0 + sin(t * 29.0) * 1.2 + burst * 10.0
+	var lean := sin(t * 5.3) * 1.2
+	var rows := int(h)
+	for i in rows:
+		var k := float(i) / maxf(h, 1.0)
+		var w := (1.0 - k) * (5.0 + burst * 2.5) * (0.75 + 0.25 * sin(t * 23.0 + i))
+		var col := Color("eafff0").lerp(Color("7dff9a"), clampf(k * 1.6, 0.0, 1.0)).lerp(Color("2aa860"), clampf((k - 0.6) * 2.5, 0.0, 1.0))
+		var x0 := roundf(top.x - w + lean * k)
+		c.draw_rect(Rect2(x0, top.y - i, maxf(1.0, roundf(w * 2.0)), 1), Color(col, alpha))
+	c.draw_rect(Rect2(top.x - 1, top.y - 3, 2, 3), Color(1, 1, 1, alpha))
+	# sparks: thrown up, arcing, falling, fading
+	for i in 9:
+		var ph := fmod(t * 1.3 + i * 0.137 + i * i * 0.071, 1.0)
+		var ang := -PI / 2.0 + (fmod(i * 0.618, 1.0) - 0.5) * 1.9
+		var v := 26.0 + fmod(i * 7.3, 14.0) + burst * 20.0
+		var p := top + Vector2(cos(ang), sin(ang)) * v * ph + Vector2(0, 40.0 * ph * ph)
+		var sc := Color("d8ffe0") if i % 3 else Color("ffffff")
+		c.draw_rect(Rect2(p.round(), Vector2(1, 1)), Color(sc, (1.0 - ph) * alpha))
 
 
 ## A soft pool of light in layered rings.

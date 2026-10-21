@@ -9,9 +9,20 @@ extends RefCounted
 ##         matches / flare / lantern -> no slot (counters, or replaces your lantern)
 
 const ICONS_TEX: Texture2D = preload("res://assets/items.png")
+## Every item up close, 64 x 64 (tools/make_items_big.py); weapons have theirs
+## in HeroLook's gear_big.png.
+const BIG_TEX: Texture2D = preload("res://assets/items_big.png")
+const MID_TEX: Texture2D = preload("res://assets/items_mid.png")        ## the same at 32 x 32
+const GEAR_MID_TEX: Texture2D = preload("res://assets/gear_mid.png")    ## the weapons at 32 x 32
 ## A fallen partner's spirit (two players): hovering, its bag icon, its close-up
 ## (tools/make_spirit_art.py). Spirit items say which column with "sheet".
 const SPIRIT_TEX: Texture2D = preload("res://assets/spirit.png")
+const BIG := {"worn_cloak": 0, "blue_hood": 1, "leather_vest": 2, "chain_shirt": 3, "bone_mail": 4,
+	"iron_plate": 5, "kings_mantle": 6, "healing_tonic": 7, "lamp_oil": 8, "red_berry": 9, "blue_berry": 10,
+	"sunstone": 11, "bomb": 12, "windbreak": 13, "seers_draught": 14, "seer_stone": 15, "portal_flare": 16,
+	"ladder": 17, "brass_lantern": 18, "storm_lantern": 19, "witchglass_lantern": 20, "ruby": 21,
+	"matches": 22, "loose_match": 23, "flare": 24, "bronze_key": 25, "silver_key": 26, "gold_key": 27,
+	"purple_key": 28}
 
 const DATA := {
 	# Weapons (atk)
@@ -43,8 +54,12 @@ const DATA := {
 	"wardens_axe": {"name": "WARDEN'S AXE", "kind": "weapon", "atk": 10, "icon": 32, "legendary": true,
 		"desc": "LEGENDARY. THE LABYRINTH'S FIRST WARDEN CARRIED THIS. IT HAS NEVER LOST A FIGHT."},
 	# Armor (def)
-	"worn_cloak": {"name": "WORN CLOAK", "kind": "armor", "def": 1, "icon": 6,
-		"desc": "THIN WOOL. IT SMELLS LIKE HOME."},
+	# the hood you start in: red for player 1, blue for player 2 (same hood;
+	# "worn_cloak" kept as the red one's id -- saves and the hero art use it)
+	"worn_cloak": {"name": "RED HOOD", "kind": "armor", "def": 1, "icon": 40,
+		"desc": "WARM RED WOOL. IT SMELLS LIKE HOME."},
+	"blue_hood": {"name": "BLUE HOOD", "kind": "armor", "def": 1, "icon": 41,
+		"desc": "WARM BLUE WOOL. IT SMELLS LIKE HOME."},
 	"leather_vest": {"name": "LEATHER VEST", "kind": "armor", "def": 2, "icon": 7,
 		"desc": "STIFF LEATHER, STITCHED BY HAND."},
 	"chain_shirt": {"name": "CHAIN SHIRT", "kind": "armor", "def": 3, "icon": 8,
@@ -268,7 +283,7 @@ static func with_article(id: String, qty: int = 1) -> String:
 const GEAR_TIER := {
 	"rusty_dagger": 0, "bone_club": 0, "hatchet": 1, "hooked_sickle": 1, "iron_mace": 2, "grave_blade": 2,
 	"pitchfork": 0, "cleaver": 0, "boar_spear": 1, "flail": 2, "silver_dagger": 2, "war_scythe": 2,
-	"worn_cloak": 0, "leather_vest": 0, "chain_shirt": 1, "bone_mail": 2, "iron_plate": 2,
+	"worn_cloak": 0, "blue_hood": 0, "leather_vest": 0, "chain_shirt": 1, "bone_mail": 2, "iron_plate": 2,
 	"brass_lantern": 1, "storm_lantern": 1, "witchglass_lantern": 2,
 }
 
@@ -310,6 +325,39 @@ static func roll(rng: RandomNumberGenerator) -> String:
 		if r < 0:
 			return entry[0]
 	return "matches"
+
+
+## The item at 32 x 32: its up-close render at half size (items_mid.png /
+## gear_mid.png, tools/make_items_mid.py), filling `rect`; an item without one
+## draws its icon.
+static func draw_mid(canvas: CanvasItem, id: String, rect: Rect2, mod := Color.WHITE) -> void:
+	var s: Array = mid_src(id)
+	canvas.draw_texture_rect_region(s[0], rect, s[1], mod)
+
+
+## [texture, region] of the item at 32 x 32 (for drawing it some other way,
+## like a silhouette).
+static func mid_src(id: String) -> Array:
+	if HeroLook.WEAPONS.has(id):
+		return [GEAR_MID_TEX, Rect2(HeroLook.WEAPONS[id] * 32, 0, 32, 32)]
+	if BIG.has(id):
+		return [MID_TEX, Rect2(BIG[id] * 32, 0, 32, 32)]
+	if DATA[id].has("spirit"):
+		return [SPIRIT_TEX, Rect2(int(DATA[id].sheet) * 16, 24, 16, 16)]
+	return [ICONS_TEX, Rect2(int(DATA[id].icon) * 16, 0, 16, 16)]
+
+
+## The item up close: its 64 x 64 render with its top left at `at` (an item
+## without one: its icon at 4x).
+static func draw_big(canvas: CanvasItem, id: String, at: Vector2) -> void:
+	if HeroLook.WEAPONS.has(id):
+		canvas.draw_texture_rect_region(HeroLook.GEAR_BIG_TEX, Rect2(at, Vector2(64, 64)), Rect2(HeroLook.WEAPONS[id] * 64, 0, 64, 64))
+	elif DATA.has(id) and DATA[id].has("spirit"):
+		canvas.draw_texture_rect_region(SPIRIT_TEX, Rect2(at, Vector2(64, 64)), Rect2(int(DATA[id].sheet) * 64, 40, 64, 64))
+	elif BIG.has(id):
+		canvas.draw_texture_rect_region(BIG_TEX, Rect2(at, Vector2(64, 64)), Rect2(BIG[id] * 64, 0, 64, 64))
+	elif DATA.has(id):
+		draw_icon(canvas, id, Rect2(at, Vector2(64, 64)))
 
 
 static func draw_icon(canvas: CanvasItem, id: String, rect: Rect2) -> void:

@@ -8,3 +8,5 @@ _xfer/
 _before_*/
 *.tgz
 .DS_Store
+_to_delete/
+*.tar

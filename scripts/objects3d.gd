@@ -127,11 +127,12 @@ func _add_door(c: Vector2i, color: String, gate := false) -> Dictionary:
 		n.rotation.y = PI / 2.0
 	var w := 0.5
 	var hgt := DOOR_H * (1.15 if gate else 1.0)
-	# the frame: two stone posts and a lintel
+	# the frame: two stone posts, no higher than the gate -- nothing over the
+	# doorway, so once it's open it's just the open hall (a lintel over it read
+	# as a tunnel you walked under)
 	var stone := mat("slab")
-	box(n, Vector3(-w - 0.08, 0, -0.14), Vector3(-w + 0.04, hgt + 0.12, 0.14), stone)
-	box(n, Vector3(w - 0.04, 0, -0.14), Vector3(w + 0.08, hgt + 0.12, 0.14), stone)
-	box(n, Vector3(-w - 0.12, hgt, -0.16), Vector3(w + 0.12, hgt + 0.2, 0.16), stone)
+	box(n, Vector3(-w - 0.08, 0, -0.14), Vector3(-w + 0.04, hgt, 0.14), stone)
+	box(n, Vector3(w - 0.04, 0, -0.14), Vector3(w + 0.08, hgt, 0.14), stone)
 	# the leaf, on a hinge at its left edge
 	var pivot := Node3D.new()
 	pivot.position = Vector3(-w + 0.04, 0, 0)

@@ -42,6 +42,18 @@ const ZONE_ROWS := 5
 const BIOMES: Array[String] = ["crypt", "forest", "courtyard", "mountain", "river", "swamp"]
 const BIOME_WEIGHTS := [46, 13, 10, 11, 10, 10]
 const SAME_AS_NEIGHBOR := 0.35   # landscapes clump together a bit
+## Rare lands (not in every labyrinth). Each is built on one of the usual
+## landscapes (so doors, keys, chests and traps work as ever), then dressed as
+## its own: see _pick_rare_lands / _decorate_rare, and rare_lands.gd for the rest.
+const R_NONE := 0
+const R_BEACH := 1      ## rare: only on the map's edge -- a shore, then open sea
+const R_JUNGLE := 2     ## rare: murky channels everywhere, bridges over them, jungle trees
+const R_SNOW := 3       ## rare: snowy peaks
+const R_VOLCANO := 4    ## rare: lava rivers and flows that burn
+const R_GOLD := 5       ## extremely rare: one great gold slab, molten gold, rubies, no creatures
+const RARE_BASE := {R_BEACH: 4, R_JUNGLE: 5, R_SNOW: 3, R_VOLCANO: 3, R_GOLD: 2}
+const RARE_CHANCES := [0.45, 0.4, 0.15]   ## how many rare lands a labyrinth has: none, one, two
+const GOLD_CHANCE := 0.04                 ## the gold vault: about one labyrinth in 25
 
 var w := 0
 var h := 0
@@ -55,6 +67,8 @@ var start := Vector2i.ZERO
 var biome := PackedByteArray()        # per tile: index into BIOMES
 var zones: Array[Rect2i] = []          # zone rects (walls on their edges)
 var zone_biome: Array[int] = []
+var zone_rare: Array[int] = []    # per zone: R_NONE or a rare land
+var lava := {}                    # walkable cells a lava flow runs over (they burn)
 var _start_zone := -1
 var villages: Array = []          # see _stamp_village()
 var _village_host := {}           # zone index -> the landscape around that village
@@ -83,6 +97,7 @@ func generate(width: int, height: int, seed_value: int) -> Dictionary:
 
 	var left_side := rng.randf() < 0.5
 	_make_zones(left_side)
+	_pick_rare_lands(seed_value)
 	for zi in zones.size():
 		if zone_biome[zi] != 0:
 			_carve_open_zone(zi)
@@ -117,6 +132,7 @@ func generate(width: int, height: int, seed_value: int) -> Dictionary:
 		start_room = _start_room
 	start = _room_center(rooms[start_room])
 	_decorate(start_room)
+	_settle_rare_lands()
 	_decorate_open_zones()
 	var goal := _farthest_cell(start)
 	_goal = goal
@@ -128,6 +144,7 @@ func generate(width: int, height: int, seed_value: int) -> Dictionary:
 		"rows": rows, "start": start, "goal": goal,
 		"rooms": rooms, "themes": room_themes, "seed": seed_value, "biome": biome,
 		"zones": zones, "zone_biome": zone_biome, "villages": villages, "nooks": nooks, "links": _open_links(),
+		"zone_rare": zone_rare, "lava": lava,
 	}
 
 
@@ -264,6 +281,156 @@ func _make_zones(left_side: bool) -> void:
 				biome[y * w + x] = zone_biome[zi]
 
 
+## Which rare lands this labyrinth has, and where (its own dice: the usual
+## landscapes come out as they always would). Never the starting zone; the
+## beach only on the map's edge, facing out to sea.
+func _pick_rare_lands(seed_value: int) -> void:
+	var dice := RandomNumberGenerator.new()
+	dice.seed = seed_value * 7919 + 4243
+	zone_rare.resize(zones.size())
+	zone_rare.fill(R_NONE)
+	var wanted: Array[int] = []
+	var roll := dice.randf()
+	var count := 0 if roll < RARE_CHANCES[0] else (1 if roll < RARE_CHANCES[0] + RARE_CHANCES[1] else 2)
+	var kinds: Array[int] = [R_BEACH, R_JUNGLE, R_SNOW, R_VOLCANO]
+	for n in count:
+		var k: int = kinds[dice.randi() % kinds.size()]
+		kinds.erase(k)
+		wanted.append(k)
+	if dice.randf() < GOLD_CHANCE:
+		wanted.append(R_GOLD)
+	for k in wanted:
+		var options: Array[int] = []
+		for zi in zones.size():
+			if zi == _start_zone or zone_rare[zi] != R_NONE or zone_biome[zi] == 0:
+				continue   # (only open land becomes a rare land: the crypts stay as they are)
+			var zx := zi % ZONE_COLS
+			var zy := zi / ZONE_COLS
+			var edge := zy == 0 or zy == ZONE_ROWS - 1
+			if k == R_BEACH and not edge:
+				continue   # (the sea is only above and below: the start and the end are left and right)
+			if k == R_GOLD and (edge or zx == 0 or zx == ZONE_COLS - 1):
+				continue   # the vault lies deep inside
+			# not right beside the start
+			var s := _start_zone
+			if absi(zx - s % ZONE_COLS) + absi(zy - s / ZONE_COLS) <= 1:
+				continue
+			options.append(zi)
+		if options.is_empty():
+			continue
+		var zi: int = options[dice.randi() % options.size()]
+		zone_rare[zi] = k
+
+
+## The rare lands take on the landscape they're built on (after the zones are
+## carved and joined, so everything up to here is just as it would be).
+func _settle_rare_lands() -> void:
+	for zi in zones.size():
+		if zone_rare[zi] == R_NONE:
+			continue
+		zone_biome[zi] = RARE_BASE[zone_rare[zi]]
+		var r := zones[zi]
+		for y in range(r.position.y, r.end.y):
+			for x in range(r.position.x, r.end.x):
+				biome[y * w + x] = zone_biome[zi]
+
+
+## The map edge a beach zone faces (UP or DOWN), or ZERO.
+func sea_side(zi: int) -> Vector2i:
+	var zy := zi / ZONE_COLS
+	if zy == 0:
+		return Vector2i.UP
+	if zy == ZONE_ROWS - 1:
+		return Vector2i.DOWN
+	return Vector2i.ZERO
+
+
+## Dresses a rare land.
+func _decorate_rare(zi: int, r: Rect2i, cells_in: Array[Vector2i]) -> void:
+	match zone_rare[zi]:
+		R_BEACH:
+			# sand, then the shore: the sea comes in over the side facing out
+			var side := sea_side(zi)
+			var phase := rng.randf() * TAU
+			var cells_sorted := cells_in.duplicate()
+			cells_sorted.sort_custom(func(a, b): return (a.y if side == Vector2i.UP else -a.y) < (b.y if side == Vector2i.UP else -b.y))
+			for c: Vector2i in cells_sorted:
+				var from_edge: int = (c.y - r.position.y) if side == Vector2i.UP else (r.end.y - 1 - c.y)
+				var coast := 4.0 + sin(phase + c.x * 0.31) * 1.6 + sin(phase * 2.0 + c.x * 0.13) * 1.2
+				if float(from_edge) < coast:
+					_try_block(c, "~")
+			for c in cells_in:
+				if _at(c) == "." and rng.randf() < 0.02:
+					_try_block(c, "b")      # driftwood and rocks
+				elif _at(c) == "." and rng.randf() < 0.01:
+					_try_place(c, "x")      # bleached bones
+			_pools(r, cells_in, 2)          # tide pools
+		R_JUNGLE:
+			for c in cells_in:
+				var roll := rng.randf()
+				if roll < 0.5:
+					_put(c, ",")
+				elif roll < 0.62:
+					_put(c, "w")
+			for n in 3:
+				_river(r)                   # murky channels, each with its bridges
+			_pools(r, cells_in, 10)
+			for c in cells_in:
+				var roll := rng.randf()
+				if roll < 0.035:
+					_try_block(c, "b")      # thick undergrowth
+				elif roll < 0.05:
+					_try_place(c, "m")
+		R_SNOW:
+			for c in cells_in:
+				var roll := rng.randf()
+				if roll < 0.06:
+					_try_block(c, "b")      # snow-buried boulders
+				elif roll < 0.07:
+					_try_place(c, "x")
+			_pools(r, cells_in, 3)          # frozen tarns
+		R_VOLCANO:
+			for c in cells_in:
+				if rng.randf() < 0.05:
+					_try_block(c, "b")      # black rock
+			for n in 2:
+				_river(r)                   # rivers of lava, crusted over in places
+			_pools(r, cells_in, 9)          # lava pools
+			# lava flows over the ground: they burn, but never close a way
+			# through (each one could be a wall without cutting anything off)
+			var flows: Array[Vector2i] = []
+			for c in cells_in:
+				if _at(c) != "." or c == start:
+					continue
+				var by_lava := false
+				for d in DIRS:
+					if _at(c + d) == "~":
+						by_lava = true
+				if by_lava and rng.randf() < 0.6:
+					_try_block(c, "~")
+					if _at(c) == "~":
+						flows.append(c)
+						lava[c] = true
+			for c in flows:
+				_put(c, ".")
+		R_GOLD:
+			# one great slab of gold, edge to edge (only ever opening things
+			# up), with rivers of molten gold across it
+			var inner := r.grow(-2)
+			for y in range(inner.position.y, inner.end.y):
+				for x in range(inner.position.x, inner.end.x):
+					if _at(Vector2i(x, y)) != ".":
+						_put(Vector2i(x, y), ".")
+			cells_in.clear()
+			for y in range(r.position.y, r.end.y):
+				for x in range(r.position.x, r.end.x):
+					if _at(Vector2i(x, y)) == ".":
+						cells_in.append(Vector2i(x, y))
+			for n in 2:
+				_river(r)
+			_pools(r, cells_in, 3)
+
+
 func _pick_biome() -> int:
 	var total := 0
 	for wt in BIOME_WEIGHTS:
@@ -376,6 +543,9 @@ func _decorate_open_zones() -> void:
 					cells_in.append(Vector2i(x, y))
 		if cells_in.is_empty():
 			continue   # this zone got filled in (it couldn't be joined up)
+		if zone_rare[zi] != R_NONE:
+			_decorate_rare(zi, r, cells_in)
+			continue
 		match kind:
 			"forest":
 				for c in cells_in:
@@ -400,7 +570,7 @@ func _decorate_open_zones() -> void:
 					elif rng.randf() < 0.18:
 						_put(c, ",")
 				for n in 2:
-					_try_block(cells_in[rng.randi() % cells_in.size()], "c")
+					_no_candle(cells_in[rng.randi() % cells_in.size()])
 			"mountain":
 				for c in cells_in:
 					var roll := rng.randf()
@@ -782,17 +952,15 @@ func _decorate(start_room: int) -> void:
 		match theme:
 			"start":
 				# The Waking Chamber: a stone bier in the middle (drawn by the
-				# world), candles at its head, two old graves, moss in the cracks.
+				# world), two old graves, moss in the cracks.
 				if r.size == START_ROOM_SIZE:
-					for p in [Vector2i(3, 2), Vector2i(5, 2)]:
-						_put(r.position + p, "c")
 					for p in [Vector2i(1, 1), Vector2i(7, 1)]:
 						_put(r.position + p, "g")
 					for p in [Vector2i(1, 5), Vector2i(2, 5), Vector2i(1, 4), Vector2i(7, 5), Vector2i(6, 5), Vector2i(4, 6)]:
 						_put(r.position + p, ",")
 				else:
-					_try_block(r.position + Vector2i(1, 1), "c")
-					_try_block(r.end - Vector2i(2, 2), "c")
+					_no_candle(r.position + Vector2i(1, 1))
+					_no_candle(r.end - Vector2i(2, 2))
 			"garden":
 				_fill_room(r, ",")
 				for n in rng.randi_range(1, 3):
@@ -807,7 +975,7 @@ func _decorate(start_room: int) -> void:
 						if rng.randf() < 0.75:
 							_try_block(Vector2i(x, y), "g")
 				for n in rng.randi_range(1, 2):
-					_try_block(_rand_in(r.grow(-1)), "c")
+					_no_candle(_rand_in(r.grow(-1)))
 				for n in rng.randi_range(0, 2):
 					_try_place(_rand_in(r), "x")
 			"flooded":
@@ -879,6 +1047,13 @@ func _try_place(c: Vector2i, ch: String) -> void:
 
 
 ## Blocking decoration: only if it doesn't cut anything off.
+## Where a floor candle used to go. They're gone (too small to see on the
+## floor, and they blocked the way); the spot is still picked, so the dice
+## roll the same and every labyrinth -- and every saved run -- stays as it was.
+func _no_candle(_c: Vector2i) -> void:
+	pass
+
+
 func _try_block(c: Vector2i, ch: String) -> void:
 	if c == start or not (_at(c) == "." or _at(c) == ","):
 		return
@@ -1000,6 +1175,7 @@ func add_villages(picks: Array) -> Dictionary:
 		"rows": rows, "start": start, "goal": _goal,
 		"rooms": rooms, "themes": room_themes, "seed": 0, "biome": biome,
 		"zones": zones, "zone_biome": zone_biome, "villages": villages, "nooks": nooks, "links": _open_links(),
+		"zone_rare": zone_rare, "lava": lava,
 		"heights": heights, "cliffs": cliffs, "ramps": ramps,
 	}
 

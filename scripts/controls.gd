@@ -81,3 +81,75 @@ static func _build(pfx: String, keys: Dictionary, without: Array, pad: int) -> v
 			jm.axis_value = STICK[a][1]
 			jm.device = pad
 			InputMap.action_add_event(name, jm)
+
+
+
+# --- Sprint that can't stick -------------------------------------------------------
+## A held key can stay "held" if its release never arrives (on a Mac: a key let
+## go while Cmd is down, or the window losing focus mid-press) -- and since
+## sprint is the one action you hold, the hero sprints forever. So: everything
+## is let go when the window loses focus or Cmd comes up (main.gd), and a key
+## held for sprint must keep sending its repeats -- if they stop for a while
+## (once we know this keyboard sends them), it's taken as let go.
+##
+## And sprint follows what you're moving with. "sprint" is Z, Shift AND a
+## controller's B button, and any one of them held keeps the action held -- so
+## a controller (or something the Mac thinks is one) with B stuck down kept
+## the hero sprinting forever, whatever you did with Z. Now: moving with the
+## keyboard, only the keyboard's sprint keys count, and letting go of any of
+## them stops the sprint; moving with a controller, only its button counts.
+
+const SPRINT_QUIET := 2.5             ## seconds without a repeat before a held key counts as let go
+static var _sprint_key_t := {}        ## prefix -> msec of the last press or repeat of a sprint key
+static var _sprint_pad := {}          ## prefix -> held on a controller (no repeats there)
+static var _repeats_seen := {}        ## prefix -> this keyboard sends repeats for held keys
+static var _kb_down := {}             ## prefix -> a keyboard sprint key is down (by its own presses and releases)
+static var _move_src := {}            ## prefix -> what you last moved with: "kb" or "pad"
+const _MOVES := ["move_up", "move_down", "move_left", "move_right"]
+
+
+## Main passes every input event through here.
+static func note(event: InputEvent) -> void:
+	for pfx in ["", "p2_"]:
+		# what this player is moving with
+		if event.is_pressed() and not event.is_echo():
+			for m in _MOVES:
+				if InputMap.has_action(pfx + m) and event.is_action(pfx + m):
+					_move_src[pfx] = "kb" if event is InputEventKey else "pad"
+					break
+		var name: String = pfx + "sprint"
+		if not InputMap.has_action(name) or not event.is_action(name):
+			continue
+		if event is InputEventKey:
+			if event.pressed:
+				_sprint_key_t[pfx] = Time.get_ticks_msec()
+				if not event.echo:
+					_kb_down[pfx] = true
+				else:
+					_repeats_seen[pfx] = true
+			else:
+				_kb_down[pfx] = false   # let go of any sprint key: the sprint stops
+		elif event is InputEventJoypadButton:
+			_sprint_pad[pfx] = event.pressed
+
+
+## Is this player holding sprint (for real)?
+static func sprint_held(pfx: String) -> bool:
+	if not Input.is_action_pressed(pfx + "sprint"):
+		return false
+	if _move_src.get(pfx, "kb") == "pad":
+		return _sprint_pad.get(pfx, false)   # on a controller: its button
+	if not _kb_down.get(pfx, false):
+		return false                         # on the keyboard: its keys, nothing else
+	if not _repeats_seen.get(pfx, false):
+		return true
+	return Time.get_ticks_msec() - int(_sprint_key_t.get(pfx, 0)) < int(SPRINT_QUIET * 1000.0)
+
+
+## Lets go of everything (the window lost focus, or Cmd came up).
+static func release_all() -> void:
+	_kb_down.clear()
+	_sprint_pad.clear()
+	for a in InputMap.get_actions():
+		if Input.is_action_pressed(a):
+			Input.action_release(a)

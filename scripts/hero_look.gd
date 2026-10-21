@@ -18,6 +18,12 @@ static func use(pl: Node) -> void:
 	p2 = pl != null and pl.get("p2") == true
 	blue_flame = pl != null and pl.get("lantern_blue") == true
 const GEAR_TEX: Texture2D = preload("res://assets/gear.png")
+const WAKE_TEX: Texture2D = preload("res://assets/hero_wake.png")        ## getting out of bed (draw_pose)
+const WAKE_BLUE_TEX: Texture2D = preload("res://assets/hero_wake_blue.png")
+const WAKE_P2_TEX: Texture2D = preload("res://assets/hero_wake_p2.png")
+const WAKE_P2_BLUE_TEX: Texture2D = preload("res://assets/hero_wake_p2_blue.png")
+const WAKE_CELL := Vector2(40, 32)
+const WAKE_HIP := Vector2(20, 21)   ## where the standing frame's (8, 19) falls in a wake cell
 const BIG_TEX: Texture2D = preload("res://assets/hero_big.png")
 const BIG_BLUE_TEX: Texture2D = preload("res://assets/hero_big_blue.png")
 const BIG_P2_TEX: Texture2D = preload("res://assets/hero_big_p2.png")
@@ -34,7 +40,7 @@ const BIG_ARM := Vector2(16, 28)          ## an arm piece in hero_big_arm.png
 const BIG_ARM_SHOULDER := Vector2(8, 4)   ## its shoulder; the hand is 15 px below
 const BIG_GRIP := Vector2(10, 50)         ## where a hand holds a gear_big.png weapon
 ## Armor id -> look block in hero.png (4 rows of 3 frames each). "" = no armor.
-const LOOKS := {"": 0, "worn_cloak": 1, "leather_vest": 2, "chain_shirt": 3, "bone_mail": 4, "iron_plate": 5,
+const LOOKS := {"": 0, "worn_cloak": 1, "blue_hood": 1, "leather_vest": 2, "chain_shirt": 3, "bone_mail": 4, "iron_plate": 5,
 	"kings_mantle": 6}   ## (6: the legendary one, tools/legendary_gear.py)
 ## Weapon id -> column in gear.png.
 const WEAPONS := {"rusty_dagger": 0, "bone_club": 1, "hatchet": 2, "hooked_sickle": 3, "iron_mace": 4, "grave_blade": 5,
@@ -146,19 +152,30 @@ static func back_arm_src(armor: String) -> Rect2:
 	return Rect2(13, (LOOKS.get(armor, 0) * 4 + 1) * 24 + 14, 3, 6)
 
 
-## The hero getting into or out of bed, seen from the front. The body bends at
-## the hip: `up` 0 = lying on the back (head to the left) .. 1 = sitting up;
-## `legs` 0 = legs stretched out along the bed (to the right) .. 1 = hanging
-## down / standing. With up = legs = 1 it's exactly the standing frame, with
-## the hip at `hip` (the frame's (8, 19)).
+## The hero getting into or out of bed, seen from the front, in drawn frames
+## (hero_wake*.png, tools/make_wake_frames.py): `up` 0 = lying on his back
+## (head to the left, legs along the bed, toes up) .. 1 = sat up; `legs` 0 =
+## sat with the legs drawn up out of sight under the cloak, ~0.6 = perched on
+## the edge (the same, settled lower), 1 = legs back out -- the plain standing
+## frame, with the hip at `hip` (the frame's (8, 19)).
 static func draw_pose(ci: CanvasItem, hip: Vector2, up: float, legs: float, armor: String, scale: float = 1.0) -> void:
 	var look: int = LOOKS.get(armor, 0)
 	var tex: Texture2D = (BODY_P2_BLUE_TEX if blue_flame else BODY_P2_TEX) if p2 else (BODY_BLUE_TEX if blue_flame else BODY_TEX)
-	var row := look * 4 * 24
-	ci.draw_set_transform(hip, -PI / 2.0 * (1.0 - clampf(legs, 0.0, 1.0)), Vector2(scale, scale))
-	ci.draw_texture_rect_region(tex, Rect2(-8, 0, 16, 5), Rect2(0, row + 19, 16, 5))
-	ci.draw_set_transform(hip, -PI / 2.0 * (1.0 - clampf(up, 0.0, 1.0)), Vector2(scale, scale))
-	ci.draw_texture_rect_region(tex, Rect2(-8, -19, 16, 19), Rect2(0, row, 16, 19))
+	ci.draw_set_transform(hip, 0.0, Vector2(scale, scale))
+	var col := -1
+	if up < 0.34:
+		col = 0          # lying
+	elif up < 0.75:
+		col = 1          # propped up
+	elif legs < 0.4:
+		col = 2          # sat up, legs tucked away under the cloak
+	elif legs < 0.85:
+		col = 3          # perched on the edge, about to hop down
+	if col < 0:
+		ci.draw_texture_rect_region(tex, Rect2(-8, -19, 16, 24), Rect2(0, look * 4 * 24, 16, 24))
+	else:
+		var wake: Texture2D = (WAKE_P2_BLUE_TEX if blue_flame else WAKE_P2_TEX) if p2 else (WAKE_BLUE_TEX if blue_flame else WAKE_TEX)
+		ci.draw_texture_rect_region(wake, Rect2(-WAKE_HIP, WAKE_CELL), Rect2(Vector2(col, look) * WAKE_CELL, WAKE_CELL))
 	ci.draw_set_transform(Vector2.ZERO)
 
 

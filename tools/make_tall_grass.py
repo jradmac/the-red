@@ -68,7 +68,7 @@ def clump(pal, seed):
         dim = 0.82 if layer == 0 else 1.0
         # the dark rim, then the body over it, then the lit side
         for x, y, r, t in pts:
-            d.ellipse([x - r - 1.6 * SS, y - r - 1.6 * SS, x + r + 1.6 * SS, y + r + 1.6 * SS], fill=rim + (255,))
+            d.ellipse([x - r - 1.0 * SS, y - r - 1.0 * SS, x + r + 1.0 * SS, y + r + 1.0 * SS], fill=rim + (255,))
         for x, y, r, t in pts:
             c = mix(root, body, min(1.0, t * 1.6)) if t < 0.6 else mix(body, tip, (t - 0.6) / 0.4)
             c = tuple(int(v * dim) for v in c)

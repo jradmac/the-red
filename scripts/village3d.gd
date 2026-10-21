@@ -314,10 +314,11 @@ func _building(b: Dictionary, st: int) -> void:
 		var cx := x0 + 0.8 + float(int(b.variant) % 2) * (x1 - x0 - 1.6)
 		_box("slab", Vector3(cx - 0.17, H + rise * 0.3, zm - depth * 0.3 - 0.17), Vector3(cx + 0.17, H + rise + 0.45, zm - depth * 0.3 + 0.17), Vector2(1, 1))
 		_box("tint:0.12,0.1,0.1", Vector3(cx - 0.2, H + rise + 0.45, zm - depth * 0.3 - 0.2), Vector3(cx + 0.2, H + rise + 0.52, zm - depth * 0.3 + 0.2))
-	# the door
+	# the door (the shop's stands open, lit: see below)
 	var d: Vector2i = b.door
 	var fz := z1 + 0.012
-	_quad("house_door", Vector3(d.x + 0.22, 0.98, fz), Vector3(d.x + 0.78, 0.98, fz), Vector3(d.x + 0.78, 0.18, fz), Vector3(d.x + 0.22, 0.18, fz), 0.56, 0.8)
+	if kind != "shop":
+		_quad("house_door", Vector3(d.x + 0.22, 0.98, fz), Vector3(d.x + 0.78, 0.98, fz), Vector3(d.x + 0.78, 0.18, fz), Vector3(d.x + 0.22, 0.18, fz), 0.56, 0.8)
 	_box(timber, Vector3(d.x + 0.14, 0.98, z1 - 0.02), Vector3(d.x + 0.86, 1.08, z1 + 0.06))
 	_box("slab", Vector3(d.x + 0.12, 0, z1), Vector3(d.x + 0.88, 0.1, z1 + 0.3), Vector2(1, 1))
 	# windows either side of the door, on each floor
@@ -340,12 +341,49 @@ func _building(b: Dictionary, st: int) -> void:
 			_box(timber, Vector3(wx - 0.23, wy - 0.05, z1), Vector3(wx + 0.23, wy, z1 + 0.06))
 	# the shop's striped awning; the inn's hanging sign
 	if kind == "shop":
-		_quad("awning", Vector3(x0 + 0.15, 1.2, z1 + 0.02), Vector3(x1 - 0.15, 1.2, z1 + 0.02), Vector3(x1 - 0.15, 0.98, z1 + 0.5), Vector3(x0 + 0.15, 0.98, z1 + 0.5), (x1 - x0) * 1.0, 1)
-		_quad("awning", Vector3(x0 + 0.15, 0.98, z1 + 0.5), Vector3(x1 - 0.15, 0.98, z1 + 0.5), Vector3(x1 - 0.15, 0.86, z1 + 0.5), Vector3(x0 + 0.15, 0.86, z1 + 0.5), (x1 - x0) * 1.0, 0.5)
+		_shop_front(x0, x1, z1, fz, d, timber)
 	elif kind == "inn":
 		var sx := float(d.x) + 1.5
 		_box(timber, Vector3(sx - 0.03, 1.25, z1), Vector3(sx + 0.03, 1.31, z1 + 0.45))
 		_box("tint:0.62,0.42,0.22", Vector3(sx - 0.02, 0.88, z1 + 0.15), Vector3(sx + 0.02, 1.22, z1 + 0.45))
+
+
+## The shop's front: the striped awning over the windows only, in two halves,
+## so the doorway between them is never hidden; the door stands open with warm
+## light inside and spilling onto the step; a lantern either side, and a sign
+## over it (a gold coin and a ruby) -- you can't miss the way in.
+func _shop_front(x0: float, x1: float, z1: float, fz: float, d: Vector2i, timber: String) -> void:
+	for seg in [[x0 + 0.15, float(d.x) + 0.04], [float(d.x) + 0.96, x1 - 0.15]]:
+		var a: float = seg[0]
+		var e: float = seg[1]
+		if e - a < 0.3:
+			continue
+		_quad("awning", Vector3(a, 1.2, z1 + 0.02), Vector3(e, 1.2, z1 + 0.02), Vector3(e, 0.98, z1 + 0.5), Vector3(a, 0.98, z1 + 0.5), e - a, 1)
+		_quad("awning", Vector3(a, 0.98, z1 + 0.5), Vector3(e, 0.98, z1 + 0.5), Vector3(e, 0.86, z1 + 0.5), Vector3(a, 0.86, z1 + 0.5), e - a, 0.5)
+	var l := float(d.x) + 0.2
+	var r := float(d.x) + 0.8
+	# the open doorway: a warm, lit room beyond, darker at its edges
+	_quad("tint:1.0,0.72,0.42,1.3", Vector3(l, 1.0, fz), Vector3(r, 1.0, fz), Vector3(r, 0.18, fz), Vector3(l, 0.18, fz), 1, 1)
+	_quad("tint:0.55,0.32,0.18,0.6", Vector3(l, 1.0, fz + 0.002), Vector3(r, 1.0, fz + 0.002), Vector3(r, 0.9, fz + 0.002), Vector3(l, 0.9, fz + 0.002), 1, 1)
+	# the door itself, swung open against the inside of the frame
+	_quad("house_door", Vector3(l, 1.0, fz + 0.004), Vector3(l + 0.13, 1.0, fz + 0.004), Vector3(l + 0.13, 0.18, fz + 0.004), Vector3(l, 0.18, fz + 0.004), 0.15, 0.8)
+	# the frame
+	_box(timber, Vector3(l - 0.07, 0.18, z1 - 0.02), Vector3(l, 1.02, z1 + 0.06))
+	_box(timber, Vector3(r, 0.18, z1 - 0.02), Vector3(r + 0.07, 1.02, z1 + 0.06))
+	_box(timber, Vector3(l - 0.08, 1.0, z1 - 0.02), Vector3(r + 0.08, 1.09, z1 + 0.07))
+	# light spilling out onto the step
+	_quad("tint:1.0,0.72,0.42,0.7", Vector3(l, 0.111, z1 + 0.02), Vector3(r, 0.111, z1 + 0.02), Vector3(r + 0.06, 0.111, z1 + 0.32), Vector3(l - 0.06, 0.111, z1 + 0.32), 1, 1)
+	# a lantern either side of the door
+	for lx in [l - 0.17, r + 0.17]:
+		_box("tint:0.16,0.14,0.18", Vector3(lx - 0.02, 0.92, z1), Vector3(lx + 0.02, 0.96, z1 + 0.16))
+		_box("tint:1.0,0.8,0.45,2.5", Vector3(lx - 0.06, 0.72, z1 + 0.08), Vector3(lx + 0.06, 0.9, z1 + 0.2))
+		_box("tint:0.16,0.14,0.18", Vector3(lx - 0.08, 0.9, z1 + 0.06), Vector3(lx + 0.08, 0.94, z1 + 0.22))
+	# the sign over the door: a board with a gold coin and a ruby on it
+	var sc := float(d.x) + 0.5
+	_box("tint:0.42,0.26,0.13", Vector3(sc - 0.34, 1.1, z1 + 0.02), Vector3(sc + 0.34, 1.38, z1 + 0.08))
+	_box("tint:0.28,0.17,0.09", Vector3(sc - 0.37, 1.08, z1 + 0.01), Vector3(sc + 0.37, 1.11, z1 + 0.09))
+	_box("tint:1.0,0.8,0.3,1.4", Vector3(sc - 0.2, 1.16, z1 + 0.08), Vector3(sc - 0.04, 1.32, z1 + 0.1))
+	_box("tint:1.0,0.25,0.3,1.4", Vector3(sc + 0.05, 1.17, z1 + 0.08), Vector3(sc + 0.19, 1.31, z1 + 0.1))
 
 
 ## The sage's round tower with its purple cone roof.

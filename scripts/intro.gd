@@ -42,6 +42,8 @@ var _topics_total := 0
 var _delay := 0.0       # dark pause before the picture appears
 var _fade := 0.3        # ...and how long it takes to come up
 var _vt_was := -1.0     # last frame's time into the picture (for its sounds)
+var _steps: Array = Lore.INTRO
+var _short := false     # just the waking (every run after the very first)
 
 
 func setup(p: Player, w: World, c: Companion, h: CanvasLayer) -> void:
@@ -59,6 +61,42 @@ func setup(p: Player, w: World, c: Companion, h: CanvasLayer) -> void:
 		if s[0] == "lesson" and not seen.has(s[3]):
 			seen[s[3]] = true
 	_topics_total = seen.size()
+
+
+## The short opening, for every new run after the first: out of the dark,
+## Lume's spark, and the hero getting up off the bier -- no voice, no lessons.
+func start_short() -> void:
+	_short = true
+	_steps = []
+	for s in Lore.INTRO:
+		if s[0] in ["black", "fade", "appear", "wake"]:
+			_steps.append(s)
+			if s[0] == "appear":
+				_steps.append(["say", Lore.COMPANION, SHORT_WAKE])   # (with the REPLAY INTRO button)
+	start()
+
+
+## Lume's one line in the short opening -- while it's up, a small button offers
+## the whole opening again (X, or click it): back into the dark, from the voice.
+const SHORT_WAKE := "WAKE UP, RED. HOME IS STILL WAITING."
+var _replay_rect := Rect2()
+
+
+func _replay_offered() -> bool:
+	return _short and not _done and _kind == "say"
+
+
+func _replay_full() -> void:
+	_short = false
+	_steps = Lore.INTRO
+	_step = -1
+	_black = 1.0
+	_sleeping = true
+	companion.alpha = 0.0
+	companion.talking = false
+	companion.pos = player.position + Vector2(2, -14)
+	Sfx.play("ui_select")
+	_next()
 
 
 func start() -> void:
@@ -82,10 +120,10 @@ func _next() -> void:
 	_shown = 0.0
 	_vt_was = -1000.0
 	companion.talking = false
-	if _step >= Lore.INTRO.size():
+	if _step >= _steps.size():
 		_finish()
 		return
-	var s: Array = Lore.INTRO[_step]
+	var s: Array = _steps[_step]
 	_kind = s[0]
 	_speaker = s[1]
 	_text = s[2]
@@ -168,17 +206,19 @@ func _process(delta: float) -> void:
 			if _t > 1.6:
 				_next()
 		"wake":
-			# a stir, then he sits up, swings his legs over the edge and hops down
+			# a stir, then she sits up -- drawing her legs in under her cloak --
+			# scoots to the edge of the bier, and hops down, legs coming back out
 			_sleeping = _t < 0.35
 			player.sleeping = false
 			var stir := sin(_t * 30.0) * 1.0 if _t > 0.1 and _t < 0.35 else 0.0
 			var up := ease(clampf((_t - 0.4) / 0.6, 0.0, 1.0), -2.0)
-			var legs := ease(clampf((_t - 1.15) / 0.45, 0.0, 1.0), -2.0)
+			var scoot := ease(clampf((_t - 1.15) / 0.45, 0.0, 1.0), -2.0)
 			var hop := clampf((_t - 1.75) / 0.45, 0.0, 1.0)
 			player.pose_up = up
-			player.pose_legs = legs
+			# legs: tucked (0) while she sits and scoots, perched (0.6) on the edge, out (1) as she drops
+			player.pose_legs = 1.0 if hop > 0.12 else (0.6 if scoot > 0.85 else 0.0)
 			# the hip: on the bier, then shuffling to its front edge, then down onto the floor
-			var hip := Vector2(15, 2).lerp(Vector2(10, 5), legs).lerp(Vector2(8, 11), ease(hop, -1.6))
+			var hip := Vector2(15, 2).lerp(Vector2(10, 5), scoot).lerp(Vector2(8, 11), ease(hop, -1.6))
 			hip.y -= sin(hop * PI) * 5.0 - stir * 0.0
 			hip.x += stir
 			player.pose_hip = hip.round()
@@ -213,6 +253,19 @@ func _input(event: InputEvent) -> void:
 		skip = true
 	if event is InputEventJoypadButton and event.pressed and (event as InputEventJoypadButton).button_index == JOY_BUTTON_START:
 		skip = true
+	if _replay_offered():
+		var replay := false
+		if event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).keycode == KEY_X:
+			replay = true
+		if event is InputEventJoypadButton and event.pressed and (event as InputEventJoypadButton).button_index == JOY_BUTTON_X:
+			replay = true
+		if event is InputEventMouseButton and event.pressed and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT \
+				and _replay_rect.has_point(_canvas.get_local_mouse_position()):
+			replay = true
+		if replay:
+			get_viewport().set_input_as_handled()
+			_replay_full()
+			return
 	if skip:
 		get_viewport().set_input_as_handled()
 		_finish()
@@ -231,6 +284,8 @@ func _settle_hero() -> void:
 
 func _finish() -> void:
 	_done = true
+	if not _short and not OS.has_environment("SCYTHE_NO_INTRO"):
+		Profile.mark_intro_seen()   # the whole opening only ever plays once
 	_settle_hero()
 	companion.follow = true
 	companion.alpha = 1.0
@@ -284,6 +339,8 @@ func _draw_intro() -> void:
 				_more_arrow(Vector2(floorf(screen.x / 2) - 2, y + 4))
 		"say":
 			_draw_box(screen)
+			if _replay_offered():
+				_draw_replay_button(screen)
 		"lesson":
 			if _t >= _delay:
 				_draw_box(screen)
@@ -311,6 +368,26 @@ func _draw_lesson_screen(screen: Vector2) -> void:
 	for i in _topics_total:
 		var col := C_NAME if i < _topic_n else Color("3a3448")
 		_canvas.draw_rect(Rect2(cx - floorf(w / 2.0) + i * 6, 13, 4, 1), Color(col, maxf(shown, 0.4)))
+
+
+## The small REPLAY INTRO button, just above the dialogue box on the right.
+func _draw_replay_button(screen: Vector2) -> void:
+	var label := "REPLAY INTRO"
+	var key := "X"
+	var w := PixelFont.width_of(key) + 6 + 5 + PixelFont.width_of(label) + 8
+	var r := Rect2(screen.x - 8 - w, screen.y - 77, w, 12)
+	_replay_rect = r
+	var hover := r.has_point(_canvas.get_local_mouse_position())
+	var a := clampf(_t / 0.4, 0.0, 1.0)   # it fades in with the line
+	var edge := C_NAME if hover else Color("8a7a5a")
+	_canvas.draw_rect(r.grow(1), Color(0.02, 0.01, 0.04, 0.9 * a))
+	_canvas.draw_rect(r, Color(edge, a))
+	_canvas.draw_rect(r.grow(-1), Color(Color("2a2038") if hover else Color("17121f"), a))
+	var kr := Rect2(r.position + Vector2(3, 2), Vector2(PixelFont.width_of(key) + 4, 8))
+	_canvas.draw_rect(kr, Color(Color("a89ec0"), a))
+	_canvas.draw_rect(kr.grow(-1), Color(Color("2a2038"), a))
+	PixelFont.draw(_canvas, kr.position + Vector2(2, 1), key, Color(C_TEXT, a))
+	PixelFont.draw(_canvas, Vector2(kr.end.x + 5, r.position.y + 3), label, Color(C_NAME if hover else C_TEXT, a))
 
 
 func _draw_box(screen: Vector2) -> void:

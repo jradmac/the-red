@@ -75,7 +75,7 @@ void fragment() {
 		discard;
 	}
 	// the tips catch the light as a gust goes over
-	ALBEDO = c.rgb * (0.9 + wave * 0.35 * tip);
+	ALBEDO = c.rgb * (1.05 + wave * 0.35 * tip) * mix(0.85, 1.12, tip);
 	ROUGHNESS = 1.0;
 	// hidden and hiding like the characters (sprite3d_depth.gdshader): each
 	// clump an upright cut-out standing at its roots, so a blade rooted in

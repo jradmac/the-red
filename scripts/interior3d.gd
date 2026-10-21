@@ -58,6 +58,7 @@ const ROOM_LIGHT := {
 var interior: Interior
 var vp: SubViewport
 var screen: TextureRect
+var _res := 1.0   ## real screen pixels per game pixel
 var _root: Node3D
 var _room: Node3D
 var _cam: Camera3D
@@ -119,6 +120,9 @@ func setup(owner_interior: Interior) -> void:
 	screen = TextureRect.new()
 	screen.texture = vp.get_texture()
 	screen.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	# drawn at the screen's real resolution, shown at the layout's size (View3D)
+	screen.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	screen.stretch_mode = TextureRect.STRETCH_SCALE
 	screen.material = _grade
 	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	screen.visible = false
@@ -360,21 +364,30 @@ func _mat(key: String, tint := Color.WHITE, cut := false) -> StandardMaterial3D:
 # --- Every frame ----------------------------------------------------------------------------
 
 func _place_camera() -> void:
-	var size := Vector2(vp.size)
+	var size := Vector2(vp.size) / _res
 	_cam.fov = rad_to_deg(2.0 * atan(size.y / 32.0 / View3D.DIST))
 	var right := Vector3.RIGHT
 	var up := Vector3(0.0, cos(View3D.PITCH), -sin(View3D.PITCH))
 	var fwd := -Vector3(0.0, sin(View3D.PITCH), cos(View3D.PITCH))
 	# whole screen pixels only (as outside), so nothing shimmers
-	var look := right * (roundf(_look.dot(right) * 16.0) / 16.0) + up * (roundf(_look.dot(up) * 16.0) / 16.0) + fwd * _look.dot(fwd)
+	var g := 16.0 * _res
+	var look := right * (roundf(_look.dot(right) * g) / g) + up * (roundf(_look.dot(up) * g) / g) + fwd * _look.dot(fwd)
 	_cam.position = look + Vector3(0.0, sin(View3D.PITCH), cos(View3D.PITCH)) * View3D.DIST
 	_cam.look_at(look, Vector3.UP)
 
 
 func update(delta: float, view_size: Vector2) -> void:
 	_time += delta
-	if Vector2(vp.size) != view_size and view_size.x > 0:
-		vp.size = Vector2i(view_size)
+	var k := 1.0
+	if screen.is_inside_tree():
+		k = maxf(1.0, roundf(screen.get_viewport().get_final_transform().x.x))
+	var want := Vector2i((view_size * k).round())
+	if (vp.size != want or k != _res) and view_size.x > 0:
+		_res = k
+		vp.size = want
+		vp.scaling_3d_scale = View3D.SUPERSAMPLE if k < 2.0 else 1.0
+		vp.msaa_3d = Viewport.MSAA_4X if k >= 2.0 else Viewport.MSAA_DISABLED
+		_grade.set_shader_parameter("px_scale", k)
 		screen.size = view_size
 		_place_camera()
 	# light: flames flicker; windows follow the time of day

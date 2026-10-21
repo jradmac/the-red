@@ -46,19 +46,74 @@ var _root: Node3D
 var _mats := {}
 var _geo := {}        ## material key -> [verts, normals, uvs, colors]
 var _ground_tex := {} ## chunk origin -> texture
+var _flv := World.R_NONE   ## the rare land of the tile being built (its materials take its colours)
+var _rare_texs := {}
+
+
+## A world texture in a rare land's colours (RareLook).
+func _rare_tex(base: String, land: int) -> Texture2D:
+	var k := "%d:%s" % [land, base]
+	if not _rare_texs.has(k):
+		var src: Texture2D = load(W3D + base + ".png")
+		_rare_texs[k] = ImageTexture.create_from_image(RareLook.recolor(src.get_image(), land, RareLook.part_of(base)))
+	return _rare_texs[k]
+
+
+## A tree's leaves: "flN:<name>" for a rare land's.
+func _leaf_tex(name: String) -> Texture2D:
+	if name.begins_with("fl"):
+		return _rare_tex(name.substr(name.find(":") + 1), int(name.substr(2, name.find(":") - 2)))
+	return load(W3D + name + ".png")
+
+
+## The baked ground of a chunk, repainted where it's a rare land.
+func _repaint_rare(img: Image, chunk: Vector2i) -> void:
+	if not world.any_rare:
+		return
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	for y in range(chunk.y, chunk.y + CHUNK):
+		for x in range(chunk.x, chunk.x + CHUNK):
+			var c := Vector2i(x, y)
+			var land := world.rare_at(c)
+			if is_sea(c):
+				# under the sea: just deep water (the 2D art would draw the base land's trees here)
+				img.fill_rect(Rect2i((c - chunk) * World.TILE, Vector2i(World.TILE, World.TILE)), Color(0.05, 0.2, 0.36))
+				continue
+			if land == World.R_NONE:
+				continue
+			RareLook.recolor_area(img, (c - chunk) * World.TILE, World.TILE, land, "ground")
+
+
+## How far the build has got (0..1), for the loading screen.
+static var progress := 0.0
 
 
 func build(root: Node3D) -> void:
 	world = view.world
 	_root = root
+	progress = 0.0
 	await _bake_ground()
 	var t0 := Time.get_ticks_msec()
 	_measure_rock()
+	var total := _chunk_count()
+	var k := 0
+	var slice := Time.get_ticks_msec()
 	for cy in range(-BORDER, world.height + BORDER, CHUNK):
 		for cx in range(-BORDER, world.width + BORDER, CHUNK):
 			_build_chunk(Vector2i(cx, cy))
+			k += 1
+			progress = 0.5 + 0.5 * k / float(total)
+			if Time.get_ticks_msec() - slice > 60:   # let the loading screen move now and then
+				await RenderingServer.frame_post_draw
+				slice = Time.get_ticks_msec()
 	_growth()
 	print("WorldMesh built in ", Time.get_ticks_msec() - t0, " ms")
+
+
+func _chunk_count() -> int:
+	return int(ceil(float(world.height + 2 * BORDER) / CHUNK)) * int(ceil(float(world.width + 2 * BORDER) / CHUNK))
 
 
 # --- Baking the ground -----------------------------------------------------------------
@@ -77,14 +132,19 @@ func _bake_ground() -> void:
 	painter.villages = view.main.get("villages")
 	painter.wm = self
 	vp.add_child(painter)
+	var total := _chunk_count()
+	var k := 0
 	for cy in range(-BORDER, world.height + BORDER, CHUNK):
 		for cx in range(-BORDER, world.width + BORDER, CHUNK):
+			k += 1
+			progress = 0.5 * k / float(total)
 			painter.rect = Rect2i(cx, cy, CHUNK, CHUNK)
 			painter.position = -Vector2(cx, cy) * World.TILE
 			painter.queue_redraw()
 			vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 			await RenderingServer.frame_post_draw
 			var img := vp.get_texture().get_image()
+			_repaint_rare(img, Vector2i(cx, cy))
 			_ground_tex[Vector2i(cx, cy)] = ImageTexture.create_from_image(img)
 	vp.queue_free()
 	print("WorldMesh ground baked in ", Time.get_ticks_msec() - t0, " ms")
@@ -133,6 +193,15 @@ class _Painter extends Node2D:
 func _mat(key: String) -> StandardMaterial3D:
 	if _mats.has(key):
 		return _mats[key]
+	if key.begins_with("fl"):
+		# a rare land's version of a material: the same, repainted
+		var land := int(key.substr(2, key.find(":") - 2))
+		var base := key.substr(key.find(":") + 1)
+		var bm := _mat(base).duplicate() as StandardMaterial3D
+		if bm.albedo_texture != null:
+			bm.albedo_texture = _rare_tex(base, land)
+		_mats[key] = bm
+		return bm
 	var m := StandardMaterial3D.new()
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	m.roughness = 1.0
@@ -149,6 +218,7 @@ func _mat(key: String) -> StandardMaterial3D:
 	if key.begins_with("ground:"):
 		m.albedo_texture = _ground_tex[_chunk_of_key(key)]
 		m.texture_repeat = false
+		m.set_meta("paint", 1.2)   # the floors painted broader (LightStyle.paint_tex): calm ground
 	elif key == "ramps":
 		m.albedo_texture = HEIGHTS_TEX
 		m.texture_repeat = false
@@ -169,6 +239,8 @@ func _chunk_of_key(key: String) -> Vector2i:
 
 
 func _arrays(key: String) -> Array:
+	if _flv != World.R_NONE and not key.begins_with("ground:") and key != "ramps":
+		key = "fl%d:%s" % [_flv, key]   # a rare land: its own colours (RareLook)
 	if not _geo.has(key):
 		_geo[key] = [PackedVector3Array(), PackedVector3Array(), PackedVector2Array(), PackedColorArray()]
 	return _geo[key]
@@ -226,11 +298,20 @@ func _solid(c: Vector2i) -> bool:
 	return world.tile_at(c) == "#"
 
 
+## Off a beach, the sea (World.is_sea).
+func is_sea(c: Vector2i) -> bool:
+	return world.is_sea(c)
+
+
 func is_tree(c: Vector2i) -> bool:
+	if is_sea(c):
+		return false
 	return _solid(c) and not world.cliffs.has(c) and not world.village_solid.has(c) and TREE_BIOMES.has(_biome(c))
 
 
 func is_wall(c: Vector2i) -> bool:
+	if is_sea(c):
+		return false
 	return _solid(c) and not world.cliffs.has(c) and not world.village_solid.has(c) and WALL_BIOMES.has(_biome(c))
 
 
@@ -257,7 +338,10 @@ func _build_chunk(chunk: Vector2i) -> void:
 			var c := Vector2i(x, y)
 			var uv0 := Vector2(x - chunk.x, y - chunk.y) / CHUNK
 			var uv1 := uv0 + Vector2.ONE / CHUNK
-			if is_wall(c):
+			_flv = world.rare_at(c)
+			if is_sea(c):
+				_ground_quad(gkey, c, WATER_Y, uv0, uv1)   # (the open sea off a beach: Rare3D lays the water)
+			elif is_wall(c):
 				_wall(c)
 			elif is_tree(c):
 				_ground_quad(gkey, c, 0.0, uv0, uv1)
@@ -273,6 +357,7 @@ func _build_chunk(chunk: Vector2i) -> void:
 				_plateau_top(c, surface(c))   # high ground: the plateau's top, not the floor's
 			else:
 				_ground_quad(gkey, c, surface(c), uv0, uv1)
+	_flv = World.R_NONE
 	_flush(chunk)
 	if not trees.is_empty():
 		_trees(chunk, trees)
@@ -509,6 +594,8 @@ func _details(c: Vector2i, tkey: String, hs: Array) -> void:
 			var fx := 0.12 + float(hh % 76) / 100.0
 			var fz := 0.12 + float((hh / 76) % 76) / 100.0
 			var y := lerpf(lerpf(hs[0], hs[1], fx), lerpf(hs[3], hs[2], fx), fz)
+			if world.rare_at(c) in [World.R_SNOW, World.R_VOLCANO, World.R_GOLD] and kc[0] != "pebbles":
+				continue
 			_small.append([Vector3(c.x + fx, y, c.y + fz), kc[0], hh])
 		k += 3
 	# growth hanging down over every edge that drops away
@@ -630,6 +717,8 @@ func _maybe_ledge_prop(c: Vector2i, top: float, t: int) -> void:
 	for kc in LEDGE_PROPS.get(b, []):
 		if roll < kc[1]:
 			var j := Vector3(float(h % 7 - 3) * 0.06, 0.0, float((h / 7) % 7 - 3) * 0.06)
+			if world.rare_at(c) in [World.R_VOLCANO, World.R_GOLD]:
+				return
 			_ledges.append([Vector3(c.x + 0.5, top, c.y + 0.5) + j, kc[0], h, b])
 			return
 		roll -= kc[1]
@@ -904,7 +993,12 @@ func _trees(chunk: Vector2i, cells: Array) -> void:
 		var h := world._hash(c.x, c.y, 41)
 		var b := _biome(c)
 		var key: String
-		if b == World.B_SWAMP:
+		var land := world.rare_at(c)
+		if land == World.R_JUNGLE:
+			key = "jungle|fl%d:leaves|fl%d:swamp_bark" % [land, land]   # big, lush jungle trees
+		elif land == World.R_BEACH:
+			key = "round|fl%d:leaves|bark" % land
+		elif b == World.B_SWAMP:
 			key = "round|swamp_leaves|swamp_bark"
 		elif b == World.B_FOREST and h % 10 < 3:
 			key = "pine|needles|bark"
@@ -918,6 +1012,7 @@ func _trees(chunk: Vector2i, cells: Array) -> void:
 		var parts: PackedStringArray = key.split("|")
 		var list: Array = groups[key]
 		var pine := parts[0] == "pine"
+		var big := 1.3 if parts[0] == "jungle" else 1.0
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
@@ -926,12 +1021,12 @@ func _trees(chunk: Vector2i, cells: Array) -> void:
 		for i in list.size():
 			var c: Vector2i = list[i][0]
 			var h: int = list[i][1]
-			var r := (0.62 if pine else 0.66) + float(h % 5) * 0.04
+			var r := ((0.62 if pine else 0.66) + float(h % 5) * 0.04) * big
 			var jx := float(h % 7 - 3) * 0.04
 			var jz := float((h / 7) % 5 - 2) * 0.04
 			var base := Vector3(c.x + 0.5 + jx, 0.0, c.y + 0.5 + jz)
 			# crowns at different heights, so the rows behind show over the front
-			var trunk_h := (0.55 if pine else 0.75) + float((h / 35) % 4) * 0.12
+			var trunk_h := ((0.55 if pine else 0.75) + float((h / 35) % 4) * 0.12) * big
 			var basis := Basis(Vector3.UP, float(h % 360) * 0.0174).scaled(Vector3(r, r * (1.15 if pine else 0.95), r))
 			mm.set_instance_transform(i, Transform3D(basis, base + Vector3(0, trunk_h, 0)))
 			var tone := 0.88 + float((h / 3) % 7) * 0.04
@@ -946,7 +1041,7 @@ func _trees(chunk: Vector2i, cells: Array) -> void:
 		mi.multimesh = mm
 		var m := ShaderMaterial.new()
 		m.shader = CROWN_SHADER
-		m.set_shader_parameter("leaves", load(W3D + parts[1] + ".png"))
+		m.set_shader_parameter("leaves", _leaf_tex(parts[1]))
 		m.set_shader_parameter("uv_scale", 0.9 if pine else 0.5)
 		mi.material_override = m
 		_root.add_child(mi)
@@ -1152,7 +1247,8 @@ func _growth() -> void:
 	var img := Image.create(world.width, world.height, false, Image.FORMAT_R8)
 	for y in world.height:
 		for x in world.width:
-			img.set_pixel(x, y, Color(float(world.biome_at(Vector2i(x, y))) / 8.0, 0, 0))
+			var land := 7 if world.rare_at(Vector2i(x, y)) != World.R_NONE else world.biome_at(Vector2i(x, y))
+			img.set_pixel(x, y, Color(float(land) / 8.0, 0, 0))
 	var biomes := ImageTexture.create_from_image(img)
 	for floor in [false, true]:
 		var m := ShaderMaterial.new()

@@ -102,6 +102,9 @@ func _find_cells() -> void:
 			var c := Vector2i(x, y)
 			var t := world.tile_at(c)
 			var b := world.biome_at(c)
+			var land := world.rare_at(c)
+			if land in [World.R_SNOW, World.R_VOLCANO, World.R_GOLD, World.R_BEACH]:
+				continue   # (nothing tall grows on snow, ash, gold or sand)
 			if t == "w":
 				cells[c] = b
 				continue
@@ -110,7 +113,7 @@ func _find_cells() -> void:
 			if world.ramps.has(c) or world.doors.has(c) or world.blockers.has(c) \
 					or near_start.has_point(c) or world.near_village(c, 1):
 				continue
-			if noise.get_noise_2d(x, y) > float(GROW[b]):
+			if noise.get_noise_2d(x, y) > (-0.05 if land == World.R_JUNGLE else float(GROW[b])):
 				cells[c] = b
 
 

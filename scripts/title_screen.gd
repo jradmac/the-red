@@ -1,6 +1,6 @@
 class_name TitleScreen
 extends CanvasLayer
-## The title screen, before anything else: RED RIDING carved out of the dark
+## The title screen, before anything else: THE RED carved out of the dark
 ## (assets/title_logo.png, tools/make_title.py), motes of lantern light and
 ## shadow drifting up past it. It's all there from the start, unlit: a warm
 ## lantern light drifts in from below and the letters show as it reaches them. PRESS START, then CONTINUE (when there's a saved
@@ -92,7 +92,10 @@ func setup(summary: String, has_save: bool) -> void:
 
 
 func _options() -> Array:
-	return ["CONTINUE", "NEW GAME"] if _has_save else ["NEW GAME"]
+	var o := ["CONTINUE", "NEW GAME"] if _has_save else ["NEW GAME"]
+	if Profile.exists():
+		o.append("JOURNAL")   # everything found, across every run (journal_screen.gd)
+	return o
 
 
 ## A mote of light (warm, from the lantern) or of shadow (deep violet) drifting upward.
@@ -141,20 +144,24 @@ func _process(delta: float) -> void:
 			var n := _options().size()
 			if _pressed("move_up") or _pressed("move_down"):
 				if n > 1:
-					_sel = (_sel + 1) % n
+					_sel = posmod(_sel + (-1 if _pressed("move_up") else 1), n)
 					Sfx.play("ui_move")
 			elif _pressed("run"):
 				Sfx.play("ui_back")
 				_set_state("press")
 			elif go:
 				var opt: String = _options()[_sel]
-				if opt == "CONTINUE":
+				if opt == "JOURNAL":
+					_open_journal()
+				elif opt == "CONTINUE":
 					_leave("continue")
 				elif _has_save:
 					Sfx.play("ui_select")
 					_set_state("confirm")   # it would erase the save: ask once more
 				else:
 					_leave("new")
+		"journal":
+			pass   # (the journal has the buttons until it closes)
 		"confirm":
 			if _pressed("confirm"):
 				_leave("new")
@@ -165,6 +172,17 @@ func _process(delta: float) -> void:
 			if _t >= 0.9:
 				set_process(false)
 				chosen.emit(_choice)
+
+
+func _open_journal() -> void:
+	Sfx.play("ui_select")
+	_set_state("journal")
+	var j := JournalScreen.new()
+	add_child(j)
+	j.closed.connect(func() -> void:
+		j.queue_free()
+		_ready_frame = Engine.get_process_frames()   # (the X that closed it shouldn't count here)
+		_set_state("menu"))
 
 
 func _set_state(s: String) -> void:
@@ -224,7 +242,7 @@ func _draw_title() -> void:
 				_text_c(cx, 190, "PRESS START", C_EMBER)
 		"menu":
 			var opts := _options()
-			var y := 178.0 if opts.size() > 1 else 188.0
+			var y := 188.0 - 9.0 * (opts.size() - 1)
 			for i in opts.size():
 				var picked := i == _sel
 				var text: String = opts[i]

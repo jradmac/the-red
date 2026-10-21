@@ -125,7 +125,7 @@ func _spawn(ground_parent: Node, ghost_parent: Node) -> void:
 		for x in world.width:
 			var c := Vector2i(x, y)
 			if world.is_walkable(c) and (Vector2(c) - Vector2(world.start_cell)).length() >= MIN_SPAWN_DIST \
-					and not world.near_village(c, 2):
+					and not world.near_village(c, 2) and world.rare_at(c) != World.R_GOLD:
 				spots.append(c)
 	var taken := {}
 	var area := world.width * world.height
@@ -287,7 +287,8 @@ func _free(c: Vector2i) -> bool:
 	for h in Hero.all:
 		if h.alive() and h.player.cell == c:
 			return false
-	return world.is_walkable(c) and c != player.cell and enemy_at(c) == null and not world.in_village(c)
+	return world.is_walkable(c) and c != player.cell and enemy_at(c) == null and not world.in_village(c) \
+		and world.rare_at(c) != World.R_GOLD   # (nothing lives in the gold vault)
 
 
 ## Removes a slain enemy.

@@ -38,10 +38,18 @@ const GAIT_STEP := 0.21
 const HEAD_FOLLOW := 0.45      ## tiles crawled to swing its heading all the way round
 
 # --- Tuning -------------------------------------------------------------------------------
-const APPROACH_SPEED := 2.4      ## tiles per second, coming for you
+const APPROACH_SPEED := 2.4      ## tiles per second, coming for you -- at first
+const HUNT_TOP_SPEED := 9.2      ## ...and, the longer you stay dark, up to this: faster than your sprint
+                                 ## (you walk 4.5 tiles a second, sprint 8.3 -- for ~4.5 s)
+const HUNT_RAMP := 10.0          ## seconds of dark to reach top speed (slow to start: you get a head start)
+const HUNT_COOL := 1.5           ## light drains the built-up speed this many times faster than dark builds it
 const RETREAT_SPEED := 1.3       ## tiles per second, going back into the dark
 const CLIMB_SPEED := 1.6         ## up or down a face, coming
 const RETREAT_CLIMB := 1.0       ## ...going
+const BOLT_SPEED := 10.0         ## caught in your light: it scuttles off faster than you can run
+const BOLT_CLIMB := 6.0
+const BOLT_AFTER := 0.7          ## ...and keeps bolting this long after it's out of the light
+const LIGHT_MARGIN := 1.0        ## tiles past the edge of your light that still count as in it
 const WATCH_TIME := 2.0          ## seconds it stands at the edge of the dark before it comes
 const DROP_TIME := 0.55          ## folding down onto all fours
 const LUNGE_TIME := 0.4
@@ -71,12 +79,14 @@ var face_x := 1
 var climbing := ""               ## "", "up", "down"
 var scared := 0.0
 var _climb_to := 0.0
+var _hunt := 0.0                 ## seconds it has been hunting you in the dark (it speeds up)
 var _t := 0.0
 var _anim := 0.0
 var _repath := 0.0
 var _goal := Vector2i.ZERO
 var _beat := 0.0
 var _scrape := 0.0
+var _breath := 0.0
 var _sprite: Sprite3D
 var _glow: OmniLight3D
 var _shown_frame := 0
@@ -86,6 +96,7 @@ var _head := Vector2(0, 1)       ## which way it's heading (x, z), smoothed
 var _gait := 0.0                 ## tiles crawled (steps the frames)
 var _last_pos := Vector3.ZERO
 var _view := "crawl"             ## crawl (side), toward or away
+var _bolt := 0.0                 ## > 0: it's bolting from your light
 
 static var _astar: AStarGrid2D
 static var _astar_world: World
@@ -225,6 +236,10 @@ func tick(delta: float, dark: bool, watching: bool, daytime: bool, frozen: bool)
 		return
 	var coming := dark and scared <= 0.0
 	_t += delta
+	if state == "approach" and coming:
+		_hunt = minf(_hunt + delta, HUNT_RAMP)
+	elif not coming:
+		_hunt = maxf(_hunt - delta * HUNT_COOL, 0.0)
 	match state:
 		"away":
 			fade = move_toward(fade, 0.0, delta * 2.0)
@@ -237,9 +252,12 @@ func tick(delta: float, dark: bool, watching: bool, daytime: bool, frozen: bool)
 					_appear()
 		"watch":
 			fade = move_toward(fade, 1.0, delta / 0.8)
-			if coming and _t >= WATCH_TIME:
+			if _in_light():
+				_start_retreat()   # you walked your light into it: it bolts
+			elif coming and _t >= WATCH_TIME:
 				state = "drop"
 				_t = 0.0
+				Sfx.play("screech", 0.0, 0.06)   # it has seen you, and it comes
 			elif not coming and not watching:
 				_start_retreat()
 		"drop":
@@ -303,6 +321,7 @@ func _appear() -> void:
 
 func _start_approach() -> void:
 	state = "approach"
+	Sfx.play_at("snarl", Vector2(pos.x, pos.z) * World.TILE, 1.0)
 	_t = 0.0
 	_repath = 0.0
 	climbing = ""
@@ -350,8 +369,21 @@ func _find_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 	return out
 
 
+## How fast it comes right now: a crawl at first, building -- slowly, then
+## faster -- the longer you're in the dark, until it outruns your sprint.
+func hunt_factor() -> float:
+	var k := clampf(_hunt / HUNT_RAMP, 0.0, 1.0)
+	return k * k * (3.0 - 2.0 * k) * 0.35 + k * k * 0.65   # an ease-in: gentle at first
+
+
+func hunt_speed() -> float:
+	return lerpf(APPROACH_SPEED, HUNT_TOP_SPEED, hunt_factor())
+
+
 func _approach(delta: float) -> void:
 	var hp := _hero_pos()
+	var spd := hunt_speed()
+	var mult := spd / APPROACH_SPEED
 	if Vector2(pos.x, pos.z).distance_to(hp) <= REACH and climbing == "":
 		state = "lunge"
 		_t = 0.0
@@ -360,22 +392,42 @@ func _approach(delta: float) -> void:
 		return
 	_repath -= delta
 	if _repath <= 0.0 or path.is_empty():
-		_repath = 0.4
+		_repath = 0.4 / mult    # faster, it keeps closer track of you
 		path = _find_path(cell(), hero.player.cell)
 		if path.is_empty():
 			# right beside you: go straight for you
-			var p2 := Vector2(pos.x, pos.z).move_toward(hp, APPROACH_SPEED * delta)
+			var p2 := Vector2(pos.x, pos.z).move_toward(hp, spd * delta)
 			pos.x = p2.x
 			pos.z = p2.y
 			return
-	_move(delta, APPROACH_SPEED, CLIMB_SPEED)
+	_move(delta, spd, CLIMB_SPEED * mult)
 	_scrape -= delta
 	if _scrape <= 0.0:
-		_scrape = 0.32
+		_scrape = 0.32 / mult   # its scrabbling quickens as it speeds up
 		Sfx.play_at("step_stone%d" % (randi() % 3), Vector2(pos.x, pos.z) * World.TILE, -6.0)
+	_breath -= delta
+	if _breath <= 0.0:   # its ragged breathing, louder as it nears
+		_breath = 1.25 / sqrt(mult)
+		Sfx.play_at("breath", Vector2(pos.x, pos.z) * World.TILE, -3.0)
+
+
+## Is it inside this player's lantern light (or near its edge)?
+func _in_light() -> bool:
+	if hero == null or hero.lantern == null:
+		return false
+	var r := hero.lantern.radius() / World.TILE
+	return r > 0.0 and distance() <= r + LIGHT_MARGIN
 
 
 func _retreat(delta: float) -> void:
+	# going back into the dark, slowly, lingering -- unless your light touches
+	# it: then it scuttles off, fast (you can't run it down)
+	if _in_light():
+		if _bolt <= 0.0:
+			Sfx.play_at("screech", Vector2(pos.x, pos.z) * World.TILE, -6.0)
+		_bolt = BOLT_AFTER
+	else:
+		_bolt = maxf(_bolt - delta, 0.0)
 	if not on_screen():
 		state = "away"   # gone from sight: it waits out there, in the dark
 		fade = 0.0
@@ -385,7 +437,10 @@ func _retreat(delta: float) -> void:
 		if path.is_empty():
 			state = "away"
 			return
-	_move(delta, RETREAT_SPEED, RETREAT_CLIMB)
+	if _bolt > 0.0:
+		_move(delta, BOLT_SPEED, BOLT_CLIMB)
+	else:
+		_move(delta, RETREAT_SPEED, RETREAT_CLIMB)
 
 
 ## Along the path, climbing whatever is higher or lower than where it is.

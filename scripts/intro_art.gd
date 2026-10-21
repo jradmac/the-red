@@ -31,6 +31,8 @@ const RECTS := {
 	"matchbox": Rect2(31, 548, 46, 30),
 	"match": Rect2(78, 548, 4, 24),
 	"match_burnt": Rect2(83, 548, 4, 24),
+	"flare": Rect2(88, 548, 16, 50),
+	"parchment": Rect2(0, 599, 176, 92),
 }
 
 

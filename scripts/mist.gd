@@ -30,8 +30,8 @@ func _draw() -> void:
 	for gy in range(y0, v.end.y, STEP):
 		for gx in range(x0, v.end.x, STEP):
 			var b := world.biome_at(Vector2i(gx, gy))
-			if not DENSITY.has(b):
-				continue
+			if not DENSITY.has(b) or world.rare_at(Vector2i(gx, gy)) not in [World.R_NONE, World.R_JUNGLE]:
+				continue   # (no mist on the shore, the snow, the volcano or the vault; the jungle keeps its steam)
 			var h := world._hash(gx, gy, 31)
 			var dens: float = DENSITY[b]
 			if (h % 100) / 100.0 > 0.55 * dens + 0.2:

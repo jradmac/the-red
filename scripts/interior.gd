@@ -292,7 +292,7 @@ func _process(delta: float) -> void:
 	_from = _pos
 	cell += dir
 	_move_t = 0.0
-	_move_len = Player.RUN_TIME if Input.is_action_pressed(pfx + "sprint") else Player.WALK_TIME
+	_move_len = Player.RUN_TIME if Controls.sprint_held(pfx) else Player.WALK_TIME
 	Sfx.play("step_stone" + str(_step % 3), -4.0)
 
 

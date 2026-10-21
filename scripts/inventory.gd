@@ -91,6 +91,10 @@ func add(id: String, qty: int = 1) -> bool:
 			slots[i] = {"id": id, "qty": 1}
 		else:
 			slots[i].qty += 1
+	if Items.kind(id) == "weapon":
+		Profile.found_weapon(id)   # (the journal)
+	elif Items.kind(id) == "armor":
+		Profile.found_armor(id)
 	changed.emit()
 	return true
 
@@ -103,6 +107,10 @@ func add_stack(stack: Dictionary) -> bool:
 	var i := slot_for(stack.id)
 	if i == -1:
 		return false
+	if Items.kind(stack.id) == "weapon":
+		Profile.found_weapon(stack.id)   # (the journal)
+	elif Items.kind(stack.id) == "armor":
+		Profile.found_armor(stack.id)
 	slots[i] = stack.duplicate()
 	slots[i].qty = 1
 	changed.emit()

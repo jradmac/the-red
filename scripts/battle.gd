@@ -459,7 +459,9 @@ func _popup(text: String, pos: Vector2, col: Color) -> void:
 
 
 func _after_clash() -> void:
-	if enemy.hp <= 0 and _die_t < 0.0:
+	# (struck down on the same blow that fells you: it doesn't dissolve -- it
+	# stays standing, and you don't get its card)
+	if enemy.hp <= 0 and _die_t < 0.0 and inventory.health > 0:
 		_die_t = 0.0
 		Sfx.play("dissolve")
 		_state = "dying"
@@ -468,7 +470,7 @@ func _after_clash() -> void:
 	if inventory.health <= 0:
 		# your death wins out, even if you took it down with you
 		if enemy.hp <= 0:
-			_messages.append(_name() + " DISSOLVES INTO SMOKE... BUT ITS LAST BLOW HAS FOUND YOU.")
+			_messages.append(_name() + " REELS FROM YOUR BLOW... BUT ITS LAST STRIKE HAS FOUND YOU.")
 		_messages.append("YOU FALL...")
 		_result = "lost"
 	elif enemy.hp <= 0:

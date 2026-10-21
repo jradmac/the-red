@@ -1,5 +1,5 @@
-"""Builds the title logo: assets/title_logo.png, "RED RIDING" carved and
-scratched -- heavy Roman capitals, RED over RIDING, their edges eroded and chipped, gouges
+"""Builds the title logo: assets/title_logo.png, "THE RED" carved and
+scratched -- heavy Roman capitals, THE over RED, their edges eroded and chipped, gouges
 slashed across them, a chiselled bevel and a grain like hammered metal, lit
 red-hot from below like the lantern.
 
@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = Path(__file__).resolve().parent.parent
 FONT = Path(__file__).resolve().parent / "fonts" / "texgyrebonum-bold.otf"
 SS = 4
-LINES = ["RED", "RIDING"]    # stacked, both the same size
+LINES = ["THE", "RED"]    # stacked, both the same size
 TRACK = 0.04                 # extra space between letters (of the size)
 LEAD = 1.08                  # line spacing (of the cap height)
 LOGO_W, LOGO_H = 300, 112

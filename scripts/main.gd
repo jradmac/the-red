@@ -46,6 +46,9 @@ var doors: Doors
 var flares: Flares
 var seer: SeerTrail        ## the Seer Stone's glowing trails
 var ladders: Ladders       ## ladders set against crypt walls
+var rare: RareLands        ## the rare lands' rules (rare_lands.gd)
+var _pending_intro: Intro    ## the opening, waiting for the 3D world to be built
+var _pending_short := false
 var traps: Traps
 var _fx: Fx
 var stats: RunStats
@@ -68,7 +71,7 @@ func _ready() -> void:
 	var loading := _loading_screen()
 	await get_tree().process_frame
 	await get_tree().process_frame
-	# The title screen (RED RIDING): press start, then pick a saved run back up
+	# The title screen (THE RED): press start, then pick a saved run back up
 	# or start a new one.
 	var save := SaveGame.load_data()
 	var autoload := OS.has_environment("SCYTHE_AUTOLOAD")   # tests: load without asking
@@ -84,23 +87,40 @@ func _ready() -> void:
 		if choice == "new":
 			SaveGame.delete()
 			save = {}
+			Profile.count("runs")
 		await get_tree().process_frame
 	var fixed_seed := OS.get_environment("SCYTHE_SEED")   # (for tests)
+	loading.stage = "CARVING THE HALLS"
+	loading.frac = 0.04
+	await RenderingServer.frame_post_draw
 	world.generate(int(save.seed) if not save.is_empty() else (int(fixed_seed) if fixed_seed != "" else randi()))
+	loading.stage = "HIDING THE KEYS"
+	loading.frac = 0.14
+	await RenderingServer.frame_post_draw
 	_build(save)
+	# Hold on the loading screen (everything paused) until the 3D world has
+	# been built, then start the opening -- so it plays smoothly.
+	get_tree().paused = true
+	while view3d != null and not view3d._built:
+		loading.frac = 0.2 + 0.75 * WorldMesh.progress
+		loading.stage = "RAISING THE WALLS" if WorldMesh.progress < 0.5 else "LIGHTING THE LANTERNS"
+		await get_tree().process_frame
+	loading.stage = "AWAKENING"
+	loading.frac = 1.0
+	await get_tree().process_frame
+	get_tree().paused = false
 	loading.queue_free()
+	if _pending_intro != null:
+		if _pending_short:
+			_pending_intro.start_short()
+		else:
+			_pending_intro.start()
+		_pending_intro = null
+	_run_live = true
 
 
-func _loading_screen() -> CanvasLayer:
-	var layer := CanvasLayer.new()
-	layer.layer = 20
-	var canvas := Node2D.new()
-	canvas.draw.connect(func():
-		var size := canvas.get_viewport_rect().size
-		canvas.draw_rect(Rect2(Vector2.ZERO, size), Color("040208"))
-		var text := "DESCENDING INTO THE LABYRINTH..."
-		PixelFont.draw(canvas, Vector2(floorf((size.x - PixelFont.width_of(text)) / 2), floorf(size.y / 2)), text, Color("8a8299")))
-	layer.add_child(canvas)
+func _loading_screen() -> LoadingScreen:
+	var layer := LoadingScreen.new()   # (loading_screen.gd)
 	add_child(layer)
 	return layer
 
@@ -267,6 +287,9 @@ func _build(save: Dictionary = {}) -> void:
 
 	# The 3D view (view3d.gd): built in the background (the ground is baked a
 	# piece per frame), then switched on if the setting says so.
+	rare = RareLands.new()   # the rare lands: lava burns, the vault's rubies (rare_lands.gd)
+	add_child(rare)
+	rare.setup(self, save.is_empty())
 	view3d = View3D.new()
 	add_child(view3d)
 	view3d.setup(self)
@@ -285,10 +308,14 @@ func _build(save: Dictionary = {}) -> void:
 			companion.pos = player.position + Vector2(10, -16)
 			hud.announce("YOU RETURN", "THE LABYRINTH REMEMBERS YOU.", Color("ffe08a"))
 	else:
+		# the whole opening the very first time; after that just the waking
 		var intro := Intro.new()
 		add_child(intro)
 		intro.setup(player, world, companion, hud)
-		intro.start()
+		# (started once the 3D world is ready: see _ready -- until then the
+		# loading screen stays up, instead of the hero lying there frozen)
+		_pending_intro = intro
+		_pending_short = Profile.intro_seen() and not OS.has_environment("SCYTHE_FULL_INTRO")
 
 
 ## A hero's body, light, health and text box (made before the world systems,
@@ -304,6 +331,11 @@ func _make_hero_core(h: Hero) -> void:
 	add_child(h.inventory)
 	var pl := h.player
 	var inv := h.inventory
+	if h.p2:   # player 2 starts in the blue hood (the same hood, their colour)
+		for s in inv.slots:
+			if not s.is_empty() and s.id == "worn_cloak":
+				s.id = "blue_hood"
+				Profile.found_armor("blue_hood")   # (the journal)
 	var dress := func() -> void:
 		pl.armor_id = inv.best_id("armor", "def")
 		pl.weapon_id = inv.best_id("weapon", "atk")
@@ -636,6 +668,9 @@ func _free_floor_near(c: Vector2i) -> Vector2i:
 
 ## Joining: Start on a controller that isn't player 1's, or J on the keyboard.
 func _input(event: InputEvent) -> void:
+	Controls.note(event)   # (sprint that can't stick)
+	if event is InputEventKey and not event.pressed and (event as InputEventKey).keycode == KEY_META:
+		Controls.release_all()   # (a Mac drops the release of keys let go while Cmd was down)
 	if Hero.all.size() != 1 or player == null:
 		return
 	if event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_START:
@@ -720,6 +755,7 @@ func _hero_tick(h: Hero, delta: float) -> void:
 	var inv := h.inventory
 	var lan := h.lantern
 	var p := h.pfx
+	_note_land(pl)
 	# Z while facing a berry bush picks it too; facing a villager, you talk;
 	# facing a door in a village, you go in.
 	if Input.is_action_just_pressed(p + "confirm") and pl.can_act() and not pl.moving:
@@ -793,8 +829,8 @@ func _hero_tick(h: Hero, delta: float) -> void:
 	if inv.health <= 3 and inv.health > 0 and inv.max_health > 3:
 		h.beat_t -= delta
 		if h.beat_t <= 0.0:
-			h.beat_t = 0.75 if inv.health <= 1 else 1.0
-			Sfx.play("heartbeat", 0.0, 0.0)
+			h.beat_t = 0.62 if inv.health <= 1 else 0.85
+			Sfx.play("heart_low", 1.0 if inv.health <= 1 else -2.0, 0.0)
 
 
 func _near(a: Vector2i, b: Vector2i, reach: int) -> bool:
@@ -811,7 +847,7 @@ func _on_trap(h: Hero, text: String, damage: int) -> void:
 	h.inventory.changed.emit()
 	h.hud.hurt(text)
 	if h.inventory.health <= 0:
-		_die(h, "YOUR OWN BOMB CLAIMED YOU" if "BLAST" in text else "A TRAP CLAIMED YOU")
+		_die(h, "YOUR OWN BOMB CLAIMED YOU" if "BLAST" in text else ("THE LAVA TOOK YOU" if "LAVA" in text else "A TRAP CLAIMED YOU"))
 
 
 ## A ghost caught you in the dark.
@@ -1029,6 +1065,8 @@ func _on_gust() -> void:
 
 func _on_won() -> void:
 	SaveGame.delete()
+	Profile.found_land("home")
+	_run_live = false
 	Sfx.play("sunstone")
 	Sfx.ambient("")
 	Sfx.music("")
@@ -1186,8 +1224,8 @@ func _on_battle_ended(h: Hero, result: String, e: Enemy) -> void:
 		"fled":
 			enemies.shake_off(e)
 		"lost":
-			if e.hp <= 0:
-				enemies.dissolve(e)   # you took it with you
+			if is_instance_valid(e) and e.hp <= 0:
+				e.hp = 1   # it fell on the same blow as you -- but it's still standing
 			_die(h, "YOU WERE TORN APART")
 
 
@@ -1221,8 +1259,12 @@ func _on_bump_wall(h: Hero, c: Vector2i, fresh: bool) -> void:
 var _step_i := 0
 var _was_warning := false
 var _region_track := ""
+var _music := MusicPick.new()   ## which take of the music plays
+var _was_fighting := false
+var _life: SoundLife              ## the night's noises, the creatures', your failing flame (sound_life.gd)
 var _region_t := 0.0
 const REGION_MUSIC := {0: "crypt", 1: "forest", 2: "court", 3: "mountain", 4: "river", 5: "swamp"}
+const RARE_MUSIC := {World.R_BEACH: "beach", World.R_JUNGLE: "jungle", World.R_SNOW: "snow", World.R_VOLCANO: "volcano", World.R_GOLD: "gold"}
 
 
 ## Footsteps: stone in the crypts and courtyards and on the mountain, soft
@@ -1236,7 +1278,7 @@ func _on_step_sound(h: Hero, c: Vector2i) -> void:
 		snd = "step_mud" + str(_step_i % 2)
 	elif t == "," or t == "w" or b == World.B_FOREST or b == World.B_RIVER:
 		snd = "step_grass" + str(_step_i % 3)
-	var running := h.player.energy < Player.MAX_ENERGY and Input.is_action_pressed(h.pfx + "sprint")
+	var running := h.player.energy < Player.MAX_ENERGY and Controls.sprint_held(h.pfx)
 	Sfx.play(snd, 2.0 if running else 0.0, 0.08)
 
 
@@ -1259,6 +1301,37 @@ func _first(cls: Variant) -> Node:
 	return null
 
 
+## The journal: the first time anyone sets foot in a kind of land, it goes in.
+var _land_cell := {}   ## Player -> the cell last looked at
+
+
+func _note_land(pl: Player) -> void:
+	if _land_cell.get(pl, Vector2i(-9, -9)) == pl.cell or pl.ui_lock == "intro":
+		return
+	_land_cell[pl] = pl.cell
+	if not world.is_walkable(pl.cell):
+		return
+	var rare := world.rare_at(pl.cell)
+	if JournalData.RARE_LAND.has(rare):
+		Profile.found_land(JournalData.RARE_LAND[rare])   # (a rare land, not its biome underneath)
+		return
+	var b := world.biome_at(pl.cell)
+	if b >= 0 and b < JournalData.BIOME_LAND.size():
+		Profile.found_land(JournalData.BIOME_LAND[b])
+
+
+## Closing the game mid-run saves it, so the title offers CONTINUE next time.
+var _run_live := false
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		Controls.release_all()   # nothing stays held while you're away (sprint that can't stick)
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and _run_live and player.ui_lock != "intro" \
+			and not OS.has_environment("SCYTHE_NO_INTRO"):
+		save_game()
+
+
 ## Saves the run (from a bag). Returns true if it worked.
 func save_game() -> bool:
 	for h in Hero.all:
@@ -1269,6 +1342,8 @@ func save_game() -> bool:
 
 func _death_sound() -> void:
 	SaveGame.delete()   # death is final
+	_run_live = false
+	Profile.count("deaths")
 	Sfx.play("death")
 	Sfx.ambient("")
 	Sfx.music("")
@@ -1287,13 +1362,16 @@ func _update_sound(delta: float) -> void:
 	# Music: the landscape you're in, by day or by night (it waits a moment
 	# before changing, so walking along a border doesn't flip it back and forth).
 	var region: String = "village" if world.in_village(player.cell) else REGION_MUSIC.get(world.biome_at(player.cell), "crypt")
+	if not world.in_village(player.cell) and RARE_MUSIC.has(world.rare_at(player.cell)):
+		region = RARE_MUSIC[world.rare_at(player.cell)]   # a rare land has its own music
 	var want: String = region + ("_day" if day.light > 0.5 else "_night")
 	var fighting := false
 	for h in Hero.all:
 		if h.battle.is_active() or h.transition.is_playing():
 			fighting = true
+	var depth: float = world.progress.call(player.cell)
 	if fighting:
-		Sfx.music("battle")
+		Sfx.music(_music.battle(depth, not _was_fighting))
 		_region_t = 99.0
 	else:
 		if want != _region_track:
@@ -1303,7 +1381,12 @@ func _update_sound(delta: float) -> void:
 				_region_t = 0.0
 		else:
 			_region_t = 0.0
-		Sfx.music(_region_track)
+		# a few takes of each land's music, darker deeper in (music_pick.gd)
+		Sfx.music(_music.track(_region_track, depth, delta))
+	_was_fighting = fighting
+	if _life == null:
+		_life = SoundLife.new(self)
+	_life.update(delta)
 	if wind.warning_left > 0.0 and not _was_warning and inventory.windbreak_left <= 0.0 and not world.in_village(player.cell):
 		Sfx.play("gust_warn")
 	_was_warning = wind.warning_left > 0.0
@@ -1312,6 +1395,8 @@ func _update_sound(delta: float) -> void:
 ## A creature is dead (a won fight, or a bomb): it dissolves, maybe drops something.
 func _slay(e: Enemy) -> void:
 	stats.enemies_slain += 1
+	if e.info.has("name"):
+		Profile.record_kill(String(e.info.name))   # into the journal, for good
 	var spot := e.cell
 	enemies.dissolve(e)
 	var dropped := {}
@@ -1353,6 +1438,7 @@ func _on_village_entered(h: Hero, vi: int) -> void:
 	var v: Dictionary = world.villages[vi]
 	var first: bool = not v.get("seen", false)
 	v["seen"] = true
+	Profile.found_land("village")
 	if first:
 		var r: Rect2i = (v.rect as Rect2i).grow(1)
 		for y in range(r.position.y, r.end.y):

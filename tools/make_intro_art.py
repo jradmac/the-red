@@ -994,6 +994,91 @@ def wolfman_sheet():
     return sheet
 
 
+
+# ---------------------------------------------------------------- the flare and the map
+
+def flare():
+    """A signal flare on an iron spike: a red paper tube wound with a cream band,
+    a brass ferrule at each end, a striker cap on top, the spike below to plant it."""
+    W, H = 16, 50
+    c = Canvas(W, H)
+    cx = 8
+    # the spike: tapering to a point, iron
+    for y in range(34, 50):
+        hw = max(0, int(round(2.6 - (y - 34) * 0.16)))
+        m = (np.abs(c.xs - cx + 0.5) <= hw) & (c.ys == y)
+        c.put(m, "iron", np.where(c.xs < cx, 4.5, 2.5), 1)
+    # lower ferrule
+    fer = (np.abs(c.xs - cx + 0.5) <= 5) & (c.ys >= 31) & (c.ys <= 34)
+    c.put(fer, "bronze", np.where(c.ys == 31, 6.5, 4.6 - (c.xs - cx) * 0.25), 2)
+    # the tube: red paper, rounded by its shading, a spiral wrap seam
+    tube = (np.abs(c.xs - cx + 0.5) <= 4) & (c.ys >= 9) & (c.ys <= 30)
+    t = 4.6 - np.abs(c.xs - (cx - 2)) * 0.55
+    seam = ((c.ys + c.xs * 2) % 7 == 0)
+    t = np.where(seam, t - 1.4, t)
+    c.put(tube, "red", t, 3)
+    # cream label band with a little green flame mark
+    band = tube & (c.ys >= 17) & (c.ys <= 22)
+    c.put(band, "card", 4.4 - np.abs(c.xs - (cx - 2)) * 0.45 - np.where(c.ys == 22, 1, 0), 4)
+    for (x, y, col) in ((cx, 18, "7dff9a"), (cx - 1, 19, "3ac86a"), (cx, 19, "c8ffd8"), (cx + 1, 19, "3ac86a"), (cx, 20, "2a8a4a"), (cx, 21, "2a8a4a")):
+        c.px(x, y, col)
+    # upper ferrule and the striker cap
+    fer2 = (np.abs(c.xs - cx + 0.5) <= 5) & (c.ys >= 6) & (c.ys <= 8)
+    c.put(fer2, "bronze", np.where(c.ys == 6, 6.5, 4.4 - (c.xs - cx) * 0.25), 5)
+    cap = (np.abs(c.xs - cx + 0.5) <= 3) & (c.ys >= 1) & (c.ys <= 5)
+    c.put(cap, ["1c1418", "2e2226", "463438", "5e484a"], np.where(c.xs < cx, 3.0, 1.0) - np.where(c.ys == 1, 0, 0), 6)
+    for (x, y) in ((cx - 2, 3), (cx, 2), (cx + 1, 4), (cx - 1, 5)):
+        c.px(x, y, "7a6264")      # grit on the striker
+    c.outline()
+    return c.image()
+
+
+def parchment(W=176, H=92, seed=31):
+    """An old map: stained parchment with ragged edges, rolled at both ends on
+    wooden rods, a compass rose in the corner."""
+    c = Canvas(W, H)
+    R["paper"] = ["3a2a1a", "5a4428", "7a6038", "9a7c4c", "b89a62", "d0b47a", "e2c890", "efdaa6"]
+    paper = "paper"
+    rng = np.random.default_rng(seed)
+    n = _noise(W, H, 9, seed) * 0.6 + _noise(W, H, 3.5, seed + 1) * 0.4
+    edge = _noise(W, H, 2.0, seed + 2)
+    x0, x1 = 9, W - 10
+    body = (c.xs >= x0) & (c.xs <= x1) & (c.ys >= 2 + (edge > 0.55)) & (c.ys <= H - 3 - (edge < -0.55))
+    t = 5.3 + n * 1.4 - (np.abs(c.xs - W / 2) / (W / 2)) ** 3 * 2.2 - (np.abs(c.ys - H / 2) / (H / 2)) ** 3 * 1.6
+    # coffee rings and stains
+    for (sx, sy, r) in ((40, 60, 9), (128, 22, 6), (150, 70, 12)):
+        d = np.hypot(c.xs - sx, c.ys - sy)
+        t = np.where((d > r - 1.2) & (d < r + 0.6), t - 1.2, t)
+        t = np.where(d < r - 1.2, t - 0.35, t)
+    c.put(body, paper, t, 1)
+    # the rolls at each end: paper curled round a rod, the rod's knobs showing
+    for side, xr in ((-1, x0 - 4), (1, x1 + 4)):
+        roll = (np.abs(c.xs - xr) <= 4) & (c.ys >= 1) & (c.ys <= H - 2)
+        rt = 5.2 - np.abs(c.xs - (xr - 1.5)) * 0.9
+        c.put(roll, paper, rt, 2)
+        knob = (np.abs(c.xs - xr) <= 2) & ((c.ys <= 1) | (c.ys >= H - 2))
+        k2 = (np.abs(c.xs - xr) <= 3) & (((c.ys >= 0) & (c.ys <= 1)) | ((c.ys >= H - 2) & (c.ys <= H - 1)))
+        c.put(k2, "wood", np.where(c.xs < xr, 6.0, 3.5), 3)
+    # a faint grid of old surveyor's lines
+    for gx in range(x0 + 8, x1, 16):
+        for y in range(4, H - 4):
+            if body[y, gx] and hsh(gx, y, 3) < 0.7:
+                c.shade((c.xs == gx) & (c.ys == y), -1, paper)
+    # a compass rose, lower right
+    rx, ry = W - 30, H - 22
+    for k in range(8):
+        ang = k * math.pi / 4
+        L = 9 if k % 2 == 0 else 5
+        for s_ in range(1, L):
+            x = int(round(rx + math.cos(ang) * s_)); y = int(round(ry + math.sin(ang) * s_))
+            c.px(x, y, "5a3a22" if k % 2 == 0 else "8a6438")
+    c.px(rx, ry, "3a2414")
+    for (x, y) in ((rx - 1, ry - 10), (rx, ry - 11), (rx + 1, ry - 10), (rx, ry - 12)):
+        c.px(x, y, "5a3a22")          # the N
+    c.outline()
+    return c.image()
+
+
 # ---------------------------------------------------------------- the atlas
 
 def pack(items, width=256):
@@ -1031,7 +1116,8 @@ def main():
                                           glow=("f2e4ff", "c8a0ff", "8c50cc")))]
     back, front = lantern()
     items += [("lantern", back), ("lantern_front", front), ("matchbox", matchbox()),
-              ("match", match_stick()), ("match_burnt", match_stick(burnt=True))]
+              ("match", match_stick()), ("match_burnt", match_stick(burnt=True)),
+              ("flare", flare()), ("parchment", parchment())]
     atlas, rects = pack(items)
     atlas.save(OUT)
     wolfman_sheet().save(OUT_WOLF)

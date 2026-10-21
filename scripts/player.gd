@@ -128,7 +128,7 @@ func _process(delta: float) -> void:
 
 
 func _wants_sprint() -> bool:
-	return Input.is_action_pressed(pfx + "sprint") and not winded and energy > 0.0 and ui_lock == ""
+	return Controls.sprint_held(pfx) and not winded and energy > 0.0 and ui_lock == ""
 
 
 func _update_energy(delta: float) -> void:
@@ -219,6 +219,10 @@ func _tick_climb(delta: float) -> void:
 	var far: Vector2 = (_climb.wall as Vector2).lerp(_climb.to, 0.5)       # its other face
 	if u < 0.5:            # up the ladder, hand over hand
 		var k := u / 0.5
+		var rung := int(k * 4.0)   # the rungs creak under each step up
+		if rung > int(_climb.get("rung", -1)):
+			_climb["rung"] = rung
+			Sfx.play("ladder", -4.0, 0.12)
 		position = (_climb.from as Vector2).lerp(near, minf(k * 1.6, 1.0)).round()
 		climb_lift = CLIMB_TOP * smoothstep(0.0, 1.0, k)
 	elif u < 0.72:         # over the top

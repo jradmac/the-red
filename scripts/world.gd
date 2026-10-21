@@ -161,6 +161,7 @@ func _pick_village_zones(gen: LabyrinthGenerator, depth: Array[float], banned: A
 		var best_score := INF
 		for zi in zones.size():
 			if zi == gen.start_zone() or picks.has(zi) or banned.has(zi) or depth[zi] < 0.0 or depth[zi] > 0.75 \
+					or (zi < gen.zone_rare.size() and gen.zone_rare[zi] != 0) \
 					or (zones[zi] as Rect2i).has_point(goal_cell):
 				continue
 			var next_to := false
@@ -191,6 +192,7 @@ func _apply(result: Dictionary) -> void:
 	biome = result.biome
 	zones.assign(result.zones)
 	zone_biome.assign(result.zone_biome)
+	_apply_rare(result)
 	_name_zones()
 	villages = result.villages
 	heights = result.get("heights", PackedByteArray())
@@ -366,6 +368,10 @@ func safe_to_block(c: Vector2i, passable: Dictionary = {}) -> bool:
 			around.append(c + d)
 	if around.size() <= 1:
 		return true
+	# Fast path: if the open tiles round it (the 8 neighbours, walked in a
+	# ring) already join up, blocking it can't cut anything off -- no search.
+	if _ring_joined(c, passable, around.size()):
+		return true
 	var seen := {around[0]: true}
 	var queue: Array[Vector2i] = [around[0]]
 	var head := 0
@@ -383,6 +389,39 @@ func safe_to_block(c: Vector2i, passable: Dictionary = {}) -> bool:
 		if not seen.has(a):
 			return false
 	return true
+
+
+const _RING := [Vector2i(0, -1), Vector2i(1, -1), Vector2i(1, 0), Vector2i(1, 1),
+	Vector2i(0, 1), Vector2i(-1, 1), Vector2i(-1, 0), Vector2i(-1, -1)]
+
+
+## Do the open side-neighbours of `c` all lie in one unbroken run of open
+## tiles around it? (Then they're joined without passing through `c`.)
+func _ring_joined(c: Vector2i, passable: Dictionary, sides: int) -> bool:
+	var open: Array[bool] = []
+	for d in _RING:
+		open.append(is_walkable(c + d) or passable.has(c + d))
+	if not open.has(false):
+		return true
+	var start := open.find(false)   # walk the ring from a closed tile, so no run wraps
+	var runs_with_sides := 0
+	var in_run := false
+	var run_has_side := false
+	for k in range(1, 9):
+		var i := (start + k) % 8
+		if open[i]:
+			if not in_run:
+				in_run = true
+				run_has_side = false
+			if i % 2 == 0:
+				run_has_side = true
+		elif in_run:
+			in_run = false
+			if run_has_side:
+				runs_with_sides += 1
+	if in_run and run_has_side:
+		runs_with_sides += 1
+	return runs_with_sides <= 1
 
 
 func _load_map(rows: Array) -> void:
@@ -496,6 +535,95 @@ func _name_zones() -> void:
 		var adj: Array = words[1]
 		var noun: Array = words[2]
 		zone_names.append("THE " + adj[rng.randi() % adj.size()] + " " + noun[rng.randi() % noun.size()])
+		var rare: int = zone_rare[zi] if zi < zone_rare.size() else 0
+		if RARE_WORDS.has(rare):
+			var rw: Array = RARE_WORDS[rare]
+			zone_names[zi] = "THE " + rw[0][rng.randi() % rw[0].size()] + " " + rw[1][rng.randi() % rw[1].size()]
+
+
+# --- Rare lands (labyrinth.gd: _pick_rare_lands; rare_lands.gd) ------------------------------
+const R_NONE := 0
+const R_BEACH := 1
+const R_JUNGLE := 2
+const R_SNOW := 3
+const R_VOLCANO := 4
+const R_GOLD := 5
+const RARE_WORDS := {
+	R_BEACH: [["SUNKEN", "SALT-WHITE", "DROWNED", "LONELY", "BONE-STREWN"], ["SHORE", "STRAND", "COAST", "SANDS"]],
+	R_JUNGLE: [["DROWNING", "STRANGLING", "EMERALD", "TANGLED", "FEVER"], ["JUNGLE", "CANOPY", "WILDS", "VINES"]],
+	R_SNOW: [["FROZEN", "WHITE", "SILENT", "BITTER", "WINTER'S"], ["SPIRES", "PEAKS", "HEIGHTS", "WASTES"]],
+	R_VOLCANO: [["BURNING", "MOLTEN", "SCORCHED", "SMOULDERING", "CINDER"], ["MAW", "CALDERA", "FORGE", "PEAKS"]],
+	R_GOLD: [["GILDED", "GOLDEN", "SHINING", "KING'S"], ["VAULT", "HOARD", "SEA OF GOLD"]],
+}
+var zone_rare: Array[int] = []      ## per zone: R_NONE or a rare land
+var lava := {}                      ## walkable cells with lava flowing over them (they burn)
+var _rare_map := PackedByteArray()  ## per tile: its zone's rare land (R_NONE outside them)
+var _sea := {}                      ## the open sea off a beach (is_sea)
+var any_rare := false               ## does this labyrinth have a rare land at all?
+
+
+func _apply_rare(result: Dictionary) -> void:
+	zone_rare.assign(result.get("zone_rare", []))
+	while zone_rare.size() < zones.size():
+		zone_rare.append(R_NONE)
+	lava = result.get("lava", {})
+	for c in lava:
+		reserved[c] = true   # (no chests, doors or traps on a lava flow)
+	_rare_map.resize(width * height)
+	_rare_map.fill(R_NONE)
+	for zi in zones.size():
+		if zone_rare[zi] == R_NONE:
+			continue
+		var r: Rect2i = zones[zi]
+		for y in range(r.position.y, r.end.y):
+			for x in range(r.position.x, r.end.x):
+				if x < width and y < height:
+					_rare_map[y * width + x] = zone_rare[zi]
+	any_rare = false
+	for k in zone_rare:
+		if k != R_NONE:
+			any_rare = true
+	_find_sea()
+
+
+## Off a beach, the open sea: past the map's edge, and the rocks and trees
+## along it, all water (the 3D view's; nothing walks there anyway).
+func is_sea(c: Vector2i) -> bool:
+	return _sea.has(c)
+
+
+## Works out the sea once (is_sea is asked about every tile many times over
+## while the 3D world is built).
+func _find_sea() -> void:
+	_sea.clear()
+	var beach := false
+	for k in zone_rare:
+		if k == R_BEACH:
+			beach = true
+	if not beach:
+		return
+	var b := 16   # (as far past the edge as the 3D world is built)
+	for y in range(-b, height + b):
+		for x in range(0, width):
+			var c := Vector2i(x, y)
+			if y < 0 or y >= height:
+				for dx in range(-14, 15):
+					if rare_at(Vector2i(x + dx, y)) == R_BEACH:
+						_sea[c] = true
+						break
+			elif rare_at(c) == R_BEACH and tile_at(c) == "#":
+				var to_edge := y if y < height / 2 else height - 1 - y
+				if to_edge <= 7:
+					_sea[c] = true
+
+
+## The rare land at `cell` (R_NONE for the usual ones). Off the map's edge:
+## the nearest tile's (so the sea runs on past the beach).
+func rare_at(cell: Vector2i) -> int:
+	if not any_rare or _rare_map.size() != width * height:
+		return R_NONE
+	var c := Vector2i(clampi(cell.x, 0, width - 1), clampi(cell.y, 0, height - 1))
+	return _rare_map[c.y * width + c.x]
 
 
 ## The village whose walls hold this cell (gates included), or -1.

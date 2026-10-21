@@ -6,7 +6,8 @@ extends CanvasLayer
 ##   CLUE     the next door to unlock, or the spot where its key lies, is
 ##            put on your map (just that room -- not the way there)
 ## Get it wrong and the sprite giggles and vanishes. X walks away (the
-## sprite stays).
+## sprite stays). You have TIME_LIMIT seconds to answer: run out and it's as
+## if you'd got it wrong -- the answer is shown, and the sprite fades away.
 
 var pfx := ""   ## input action prefix: "" for player 1, "p2_" for player 2
 
@@ -38,6 +39,10 @@ var _time := 0.0
 var _opened_frame := -1
 var _fade_t := -1.0     # >= 0 while a wrong-answered sprite dissipates
 const FADE_TIME := 1.6
+const TIME_LIMIT := 5.0  ## seconds to answer a riddle
+var _ask_t := 0.0        # how long the riddle has been up
+var _timed_out := false
+var _result_t := 0.0     # how long the result has been showing (a timed-out one moves on by itself)
 
 
 func setup(p: Player, inv: Inventory, dr: Doors, w: World, am: Automap, ws: Wisps) -> void:
@@ -64,6 +69,9 @@ func open(w: Dictionary) -> void:
 	_picked = -1
 	_message = ""
 	_fade_t = -1.0
+	_ask_t = 0.0
+	_timed_out = false
+	_result_t = 0.0
 	visible = true
 	Sfx.play("riddle")
 	player.ui_lock = "riddle"
@@ -89,6 +97,28 @@ func _process(delta: float) -> void:
 	_canvas.queue_redraw()
 	if Engine.get_process_frames() == _opened_frame:
 		return
+	# the clock: answer in time or it counts as wrong
+	if _state == "ask":
+		var before := _ask_t
+		_ask_t += delta
+		var left_before := ceili(TIME_LIMIT - before)
+		var left := ceili(TIME_LIMIT - _ask_t)
+		if left != left_before and left >= 1 and left <= 3:
+			Sfx.play("ui_move", -4.0)          # tick, tick, tick
+		if _ask_t >= TIME_LIMIT:
+			_timed_out = true
+			_picked = -1
+			_state = "result"
+			_result_t = 0.0
+			Sfx.play("wrong")
+			_message = "TOO SLOW! THE ANSWER WAS " + _options[int(_riddle.answer)] + "."
+			_message_col = C_BAD
+			return
+	elif _state == "result" and _timed_out:
+		_result_t += delta
+		if _result_t >= 1.6:
+			_fade_away()
+			return
 	if _state in ["ask", "reward", "upgrade", "clue"]:
 		if Input.is_action_just_pressed(pfx + "move_up"):
 			_sel = posmod(_sel - 1, _options.size())
@@ -120,11 +150,7 @@ func _process(delta: float) -> void:
 				_options = ["AN UPGRADE  (+2 TO +4 ON A WEAPON OR ARMOR)", "A CLUE  (A DOOR OR KEY ON YOUR MAP)"]
 				_sel = 0
 			else:
-				_message = "THE SPRITE GIGGLES... AND FADES AWAY INTO THE DARK."
-				_message_col = C_DIM
-				_state = "done"
-				_fade_t = 0.0
-				Sfx.play("fade_away")
+				_fade_away()
 		"reward":
 			if _sel == 0:
 				_offer_upgrade()
@@ -150,6 +176,15 @@ func _process(delta: float) -> void:
 			if _fade_t >= 0.0 and _fade_t < FADE_TIME:
 				return   # let it finish fading
 			_close(true)
+
+
+## Wrong (or too slow): the sprite giggles and fades away into the dark.
+func _fade_away() -> void:
+	_message = "THE SPRITE GIGGLES... AND FADES AWAY INTO THE DARK."
+	_message_col = C_DIM
+	_state = "done"
+	_fade_t = 0.0
+	Sfx.play("fade_away")
 
 
 func _offer_upgrade() -> void:
@@ -216,7 +251,7 @@ func _draw_screen() -> void:
 	if _fade_t < 0.0:
 		UiKit.glow(_canvas, c, 60, col, 1.4 + 0.2 * sin(_time * 3.0))
 	var mood := 0.0
-	if _state != "ask" and _picked >= 0:
+	if _state != "ask" and (_picked >= 0 or _timed_out):
 		mood = 1.0 if _picked == int(_riddle.answer) else -1.0
 	var bob := roundf(sin(_time * 2.2) * 4.0) - (6.0 * absf(sin(_time * 8.0)) if mood > 0 else 0.0)
 	var shake := sin(_time * 30.0) * 2.0 if mood < 0 and _state == "result" else 0.0
@@ -256,6 +291,17 @@ func _draw_panels(screen: Vector2) -> void:
 	var title: String = {"ask": "YOUR ANSWER", "result": "YOUR ANSWER", "reward": "YOUR REWARD",
 		"upgrade": "BLESS WHICH ITEM?", "clue": "REVEAL WHAT?", "done": ""}.get(_state, "")
 	UiKit.panel(_canvas, lr, title)
+	if _state == "ask":
+		var left := clampf(1.0 - _ask_t / TIME_LIMIT, 0.0, 1.0)
+		var urgent := left < 0.5
+		var bar_col := C_PICK.lerp(C_BAD, clampf((0.5 - left) * 2.0, 0.0, 1.0))
+		if urgent and fmod(_time, 0.5) < 0.12:
+			bar_col = bar_col.lightened(0.4)
+		var bar := Rect2(lr.position.x + 6, lr.end.y - 6, lr.size.x - 12, 3)
+		_canvas.draw_rect(bar, Color("1e1830"))
+		_canvas.draw_rect(Rect2(bar.position, Vector2(roundf(bar.size.x * left), bar.size.y)), bar_col)
+		var secs := str(ceili(TIME_LIMIT - _ask_t))
+		PixelFont.draw(_canvas, Vector2(lr.end.x - 8 - PixelFont.width_of(secs), lr.position.y + 2), secs, bar_col)
 	if _state in ["ask", "result"]:
 		for i in _options.size():
 			var oy := lr.position.y + 12 + i * 24
@@ -292,7 +338,7 @@ func _draw_panels(screen: Vector2) -> void:
 		for line in Dialog.wrap_text(_message, int(lr.size.x) - 12):
 			PixelFont.draw(_canvas, Vector2(lr.position.x + 6, my), line, _message_col)
 			my += 8
-	var help: String = {"ask": "UP/DOWN CHOOSE   Z ANSWER   X WALK AWAY", "result": "Z CONTINUE",
+	var help: String = {"ask": "UP/DOWN CHOOSE   Z ANSWER   X WALK AWAY", "result": "" if _timed_out else "Z CONTINUE",
 		"reward": "Z CHOOSE", "upgrade": "Z BLESS IT", "clue": "Z REVEAL", "done": "Z CLOSE"}.get(_state, "")
 	PixelFont.draw(_canvas, Vector2(screen.x - 10 - PixelFont.width_of(help), screen.y - 12), help, C_DIM)
 

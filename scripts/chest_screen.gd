@@ -278,7 +278,7 @@ func _draw_screen() -> void:
 	if _note_t > 0.0:
 		PixelFont.draw(_canvas, det.position + Vector2(8, 17), _note, Color(_note_col, clampf(_note_t / 0.4, 0.0, 1.0)))
 	elif not target.is_empty():
-		Items.draw_icon(_canvas, target.id, Rect2(det.position + Vector2(6, 5), Vector2(32, 32)))
+		Items.draw_mid(_canvas, target.id, Rect2(det.position + Vector2(6, 5), Vector2(32, 32)))
 		PixelFont.draw(_canvas, det.position + Vector2(44, 7), Items.display_name(target.id), C_PICK)
 		var y := det.position.y + 16
 		for line in Dialog.wrap_text(Items.get_info(target.id).desc, 290):
